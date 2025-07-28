@@ -8,7 +8,6 @@ use askar_crypto::{
 use base64::prelude::*;
 use std::borrow::Cow;
 
-#[allow(clippy::result_large_err)]
 use sha2::{Digest, Sha256};
 
 use crate::{

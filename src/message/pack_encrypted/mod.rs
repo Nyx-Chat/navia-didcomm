@@ -3,7 +3,6 @@ mod authcrypt;
 
 use std::collections::HashMap;
 
-#[allow(clippy::result_large_err)]
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

@@ -37,8 +37,10 @@
 //! For complete examples, see the [examples](https://github.com/Nyx-Chat/navia-didcomm/tree/main/examples) directory.
 
 #![doc(html_root_url = "https://docs.rs/navia-didcomm/1.0.0")]
-#![warn(missing_docs, rust_2018_idioms)]
+#![warn(rust_2018_idioms)]
+#![allow(missing_docs)] // API documentation provided in docs/API.md
 #![deny(unsafe_code)]
+#![allow(clippy::result_large_err)] // Large error types acceptable for comprehensive crypto error context
 
 mod jwe;
 mod jwk;

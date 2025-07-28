@@ -1,5 +1,4 @@
-# Clippy configuration for navia-didcomm
-# Following main Navia project patterns
+# Clippy configuration for production-ready code
 
 # Warn on all clippy lints by default
 warn-on-all-wildcard-imports = true
@@ -13,9 +12,5 @@ too-many-lines-threshold = 100
 # Set maximum number of arguments
 too-many-arguments-threshold = 7
 
-# Allow some common patterns in crypto libraries
-# JWE/JWS are standard acronyms in cryptography
-upper-case-acronyms-aggressive = false
-
-# Allow private module inception for message/message.rs pattern
-allow-private-module-inception = true
+# Enforce documentation
+missing-docs-in-crate-items = true

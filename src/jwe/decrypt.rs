@@ -6,7 +6,6 @@ use askar_crypto::{
 };
 use base64::prelude::*;
 
-#[allow(clippy::result_large_err)]
 use crate::{
     error::{err_msg, ErrorKind, Result, ResultContext, ResultExt},
     jwe::ParsedJWE,

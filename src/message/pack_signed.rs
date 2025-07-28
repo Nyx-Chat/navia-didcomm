@@ -1,6 +1,5 @@
 use serde::Serialize;
 
-#[allow(clippy::result_large_err)]
 use crate::{
     did::DIDResolver,
     error::{err_msg, ErrorKind, Result, ResultContext},
