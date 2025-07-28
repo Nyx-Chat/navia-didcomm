@@ -72,6 +72,7 @@ features = ["v4"]
 [dev-dependencies]
 lazy_static = '1.4.0'
 futures = '0.3'
+tracing-test = '0.2'
 
 [dev-dependencies.tokio]
 version = '1.9'
