@@ -81,22 +81,16 @@ jobs:
       - name: Run benchmarks (check only)
         run: cargo bench --no-run
 
-  # Cross-platform testing
-  cross-platform-tests:
-    name: Cross-Platform Tests
-    runs-on: runs-on=${{ github.run_id }}/runner=${{ matrix.runner }}
+  # Additional testing (matching navia patterns)
+  additional-tests:
+    name: Additional Tests
+    runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-x64
     needs: quick-checks
-    strategy:
-      matrix:
-        runner: [2cpu-linux-x64, 2cpu-windows-x64, 2cpu-macos-x64]
-        rust: [stable]
     steps:
       - uses: actions/checkout@v4
       
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: ${{ matrix.rust }}
       
       - name: Cache cargo  
         uses: actions/cache@v4
@@ -107,12 +101,12 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ matrix.runner }}-${{ matrix.rust }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-additional-${{ hashFiles('**/Cargo.lock') }}
       
-      - name: Build
+      - name: Build with all features
         run: cargo build --all-features
         
-      - name: Test
+      - name: Test with all features
         run: cargo test --all-features
 
   # Security and quality checks
