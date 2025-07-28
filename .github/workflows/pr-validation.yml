@@ -15,7 +15,7 @@ jobs:
   # Quick checks that should fail fast
   quick-checks:
     name: Quick Checks
-    runs-on: ubuntu-latest
+    runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-x64
     steps:
       - uses: actions/checkout@v4
       
@@ -47,7 +47,7 @@ jobs:
   # Rust tests - comprehensive testing
   rust-tests:
     name: Rust Tests
-    runs-on: ubuntu-latest
+    runs-on: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64
     needs: quick-checks
     steps:
       - uses: actions/checkout@v4
@@ -118,7 +118,7 @@ jobs:
   # Security and quality checks
   security-checks:
     name: Security Checks
-    runs-on: ubuntu-latest
+    runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-x64
     needs: quick-checks
     steps:
       - uses: actions/checkout@v4
