@@ -3,12 +3,13 @@ mod authcrypt;
 
 use std::collections::HashMap;
 
+#[allow(clippy::result_large_err)]
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{
     algorithms::{AnonCryptAlg, AuthCryptAlg},
-    did::{DIDResolver, CachingDIDResolver},
+    did::{CachingDIDResolver, DIDResolver},
     error::{err_msg, ErrorKind, Result, ResultContext},
     protocols::routing::wrap_in_forward_if_needed,
     secrets::SecretsResolver,
@@ -84,7 +85,7 @@ impl Message {
         options: &PackEncryptedOptions,
     ) -> Result<(String, PackEncryptedMetadata)> {
         self._validate_pack_encrypted(to, from, sign_by)?;
-        
+
         // Use caching resolver to avoid duplicate DID resolutions
         let caching_resolver = CachingDIDResolver::new(did_resolver);
 
@@ -275,11 +276,11 @@ pub struct MessagingServiceMetadata {
 
 #[cfg(test)]
 mod tests {
+    use base64::prelude::*;
     use std::borrow::Cow;
     use std::{collections::HashMap, iter::FromIterator};
-    use base64::prelude::*;
 
-        use askar_crypto::{
+    use askar_crypto::{
         alg::{
             aes::{A256CbcHs512, A256Gcm, A256Kw, AesKey},
             chacha20::{Chacha20Key, XC20P},
@@ -2136,7 +2137,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Illegal argument: `from` value is not a valid DID or DID URL"
+            "Illegal argument provided: `from` value is not a valid DID or DID URL"
         );
     }
 
@@ -2166,7 +2167,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Illegal argument: `to` value is not a valid DID or DID URL"
+            "Illegal argument provided: `to` value is not a valid DID or DID URL"
         );
     }
 
@@ -2196,7 +2197,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Illegal argument: `sign_from` value is not a valid DID or DID URL"
+            "Illegal argument provided: `sign_from` value is not a valid DID or DID URL"
         );
     }
 
@@ -2228,7 +2229,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Illegal argument: `message.from` value is not equal to `from` value's DID"
+            "Illegal argument provided: `message.from` value is not equal to `from` value's DID"
         );
     }
 
@@ -2260,7 +2261,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Illegal argument: `message.to` value does not contain `to` value's DID"
+            "Illegal argument provided: `message.to` value does not contain `to` value's DID"
         );
     }
 
@@ -2316,7 +2317,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Illegal argument: `from` value is not a valid DID or DID URL"
+            "Illegal argument provided: `from` value is not a valid DID or DID URL"
         );
     }
 
@@ -2348,7 +2349,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Illegal argument: `to` value is not a valid DID or DID URL"
+            "Illegal argument provided: `to` value is not a valid DID or DID URL"
         );
     }
 
@@ -2449,7 +2450,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Illegal argument: `message.from` value is not equal to `from` value's DID"
+            "Illegal argument provided: `message.from` value is not equal to `from` value's DID"
         );
     }
 
@@ -2481,7 +2482,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Illegal argument: `message.to` value does not contain `to` value's DID"
+            "Illegal argument provided: `message.to` value does not contain `to` value's DID"
         );
     }
 
@@ -2782,7 +2783,7 @@ mod tests {
 
             assert_eq!(
                 format!("{err}"),
-                "No compatible crypto: No common keys between sender and recipient found"
+                "No compatible cryptographic algorithms found: No common keys between sender and recipient found"
             );
         }
     }
@@ -2993,7 +2994,8 @@ mod tests {
         let valid = msg.verify((sign_key_id, &sign_key)).expect("Unable verify");
         assert!(valid);
 
-        let payload = BASE64_URL_SAFE_NO_PAD.decode(msg.jws.payload)
+        let payload = BASE64_URL_SAFE_NO_PAD
+            .decode(msg.jws.payload)
             .expect("Unable decode_config");
 
         String::from_utf8(payload).expect("Unable from_utf8")

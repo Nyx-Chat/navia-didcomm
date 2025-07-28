@@ -9,5 +9,5 @@ pub use did_doc::{
     VerificationMethod, VerificationMethodType,
 };
 
-pub use did_resolver::DIDResolver;
 pub use caching_resolver::CachingDIDResolver;
+pub use did_resolver::DIDResolver;

@@ -20,20 +20,22 @@ pub(crate) fn parse<'a, 'b>(jwe: &'a str, buf: &'b mut Vec<u8>) -> Result<Parsed
 }
 
 impl<'a> JWE<'a> {
-    pub(crate) fn from_str(s: &str) -> Result<JWE> {
+    pub(crate) fn from_str(s: &str) -> Result<JWE<'_>> {
         serde_json::from_str(s).to_didcomm("Unable parse jwe")
     }
 
     pub(crate) fn parse<'b>(self, buf: &'b mut Vec<u8>) -> Result<ParsedJWE<'a, 'b>> {
-        let decoded = BASE64_URL_SAFE_NO_PAD.decode(self.protected)
+        let decoded = BASE64_URL_SAFE_NO_PAD
+            .decode(self.protected)
             .kind(ErrorKind::Malformed, "Unable decode protected header")?;
         buf.clear();
         buf.extend_from_slice(&decoded);
 
-        let protected: ProtectedHeader =
+        let protected: ProtectedHeader<'_> =
             serde_json::from_slice(buf).to_didcomm("Unable parse protected header")?;
 
-        let apv = BASE64_URL_SAFE_NO_PAD.decode(protected.apv)
+        let apv = BASE64_URL_SAFE_NO_PAD
+            .decode(protected.apv)
             .kind(ErrorKind::Malformed, "Unable decode apv")?;
 
         let apu = protected
@@ -602,7 +604,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable parse jwe: trailing comma at line 27 column 10"
+            "Message malformed or invalid: Unable parse jwe: trailing comma at line 27 column 10"
         );
     }
 
@@ -644,7 +646,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable parse jwe: missing field `iv` at line 26 column 10"
+            "Message malformed or invalid: Unable parse jwe: missing field `iv` at line 26 column 10"
         );
     }
 
@@ -687,7 +689,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable decode protected header: Invalid symbol 33, offset 0."
+            "Message malformed or invalid: Unable decode protected header: Invalid symbol 33, offset 0."
         );
     }
 
@@ -730,7 +732,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable parse protected header: trailing comma at line 1 column 317"
+            "Message malformed or invalid: Unable parse protected header: trailing comma at line 1 column 317"
         );
     }
 
@@ -773,7 +775,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable parse protected header: missing field `alg` at line 1 column 292"
+            "Message malformed or invalid: Unable parse protected header: missing field `alg` at line 1 column 292"
         );
     }
 
@@ -816,7 +818,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable decode apu: Invalid symbol 33, offset 0."
+            "Message malformed or invalid: Unable decode apu: Invalid symbol 33, offset 0."
         );
     }
 
@@ -862,7 +864,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Invalid utf8 for apu: invalid utf-8 sequence of 1 bytes from index 0"
+            "Message malformed or invalid: Invalid utf8 for apu: invalid utf-8 sequence of 1 bytes from index 0"
         );
     }
 
@@ -906,7 +908,10 @@ mod tests {
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
-        assert_eq!(format!("{err}"), "Malformed: APV mismatch");
+        assert_eq!(
+            format!("{err}"),
+            "Message malformed or invalid: APV mismatch"
+        );
     }
 
     #[test]
@@ -1107,7 +1112,10 @@ mod tests {
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
-        assert_eq!(format!("{err}"), "Malformed: APU mismatch");
+        assert_eq!(
+            format!("{err}"),
+            "Message malformed or invalid: APU mismatch"
+        );
     }
 
     #[test]
@@ -1150,6 +1158,9 @@ mod tests {
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
-        assert_eq!(format!("{err}"), "Malformed: SKID present, but no apu");
+        assert_eq!(
+            format!("{err}"),
+            "Message malformed or invalid: SKID present, but no apu"
+        );
     }
 }

@@ -1795,7 +1795,7 @@ mod test {
         .expect_err("res is ok");
 
         assert_eq!(err.kind(), ErrorKind::Malformed);
-        
+
         let err_msg = format!("{err}");
         assert!(
             err_msg.contains("Invalid key data") || err_msg.contains("Invalid padding"),
@@ -1808,61 +1808,61 @@ mod test {
     async fn unpack_works_malformed_anoncrypt_msg() {
         _verify_unpack_malformed(
             update_field(ENCRYPTED_MSG_ANON_XC20P_1, "protected", "invalid").as_str(),
-            "Malformed: Unable decode protected header: Invalid last symbol 100, offset 6.",
+            "Message malformed or invalid: Unable decode protected header: Invalid last symbol 100, offset 6.",
         )
         .await;
 
         _verify_unpack_malformed(
             remove_field(ENCRYPTED_MSG_ANON_XC20P_1, "protected").as_str(),
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             update_field(ENCRYPTED_MSG_ANON_XC20P_1, "iv", "invalid").as_str(),
-            "Malformed: Unable decode iv: Invalid last symbol 100, offset 6.",
+            "Message malformed or invalid: Unable decode iv: Invalid last symbol 100, offset 6.",
         )
         .await;
 
         _verify_unpack_malformed(
             remove_field(ENCRYPTED_MSG_ANON_XC20P_1, "iv").as_str(),
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             update_field(ENCRYPTED_MSG_ANON_XC20P_1, "ciphertext", "invalid").as_str(),
-            "Malformed: Unable decode ciphertext: Invalid last symbol 100, offset 6.",
+            "Message malformed or invalid: Unable decode ciphertext: Invalid last symbol 100, offset 6.",
         )
         .await;
 
         _verify_unpack_malformed(
             remove_field(ENCRYPTED_MSG_ANON_XC20P_1, "ciphertext").as_str(),
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             update_field(ENCRYPTED_MSG_ANON_XC20P_1, "tag", "invalid").as_str(),
-            "Malformed: Unable decode tag: Invalid last symbol 100, offset 6.",
+            "Message malformed or invalid: Unable decode tag: Invalid last symbol 100, offset 6.",
         )
         .await;
 
         _verify_unpack_malformed(
             remove_field(ENCRYPTED_MSG_ANON_XC20P_1, "tag").as_str(),
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             update_protected_field(ENCRYPTED_MSG_ANON_XC20P_1, "apv", "invalid").as_str(),
-            "Malformed: Unable decode apv: Invalid last symbol 100, offset 6.",
+            "Message malformed or invalid: Unable decode apv: Invalid last symbol 100, offset 6.",
         )
         .await;
 
         _verify_unpack_malformed(
             remove_protected_field(ENCRYPTED_MSG_ANON_XC20P_1, "apv").as_str(),
-            "Malformed: Unable parse protected header: missing field `apv` at line 1 column 166",
+            "Message malformed or invalid: Unable parse protected header: missing field `apv` at line 1 column 166",
         )
         .await;
     }
@@ -1871,73 +1871,73 @@ mod test {
     async fn unpack_works_malformed_authcrypt_msg() {
         _verify_unpack_malformed(
             update_field(ENCRYPTED_MSG_AUTH_X25519, "protected", "invalid").as_str(),
-            "Malformed: Unable decode protected header: Invalid last symbol 100, offset 6.",
+            "Message malformed or invalid: Unable decode protected header: Invalid last symbol 100, offset 6.",
         )
         .await;
 
         _verify_unpack_malformed(
             remove_field(ENCRYPTED_MSG_AUTH_X25519, "protected").as_str(),
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             update_field(ENCRYPTED_MSG_AUTH_X25519, "iv", "invalid").as_str(),
-            "Malformed: Unable decode iv: Invalid last symbol 100, offset 6.",
+            "Message malformed or invalid: Unable decode iv: Invalid last symbol 100, offset 6.",
         )
         .await;
 
         _verify_unpack_malformed(
             remove_field(ENCRYPTED_MSG_AUTH_X25519, "iv").as_str(),
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             update_field(ENCRYPTED_MSG_AUTH_X25519, "ciphertext", "invalid").as_str(),
-            "Malformed: Unable decode ciphertext: Invalid last symbol 100, offset 6.",
+            "Message malformed or invalid: Unable decode ciphertext: Invalid last symbol 100, offset 6.",
         )
         .await;
 
         _verify_unpack_malformed(
             remove_field(ENCRYPTED_MSG_AUTH_X25519, "ciphertext").as_str(),
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             update_field(ENCRYPTED_MSG_AUTH_X25519, "tag", "invalid").as_str(),
-            "Malformed: Unable decode tag: Invalid last symbol 100, offset 6.",
+            "Message malformed or invalid: Unable decode tag: Invalid last symbol 100, offset 6.",
         )
         .await;
 
         _verify_unpack_malformed(
             remove_field(ENCRYPTED_MSG_AUTH_X25519, "tag").as_str(),
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             update_protected_field(ENCRYPTED_MSG_AUTH_X25519, "apv", "invalid").as_str(),
-            "Malformed: Unable decode apv: Invalid last symbol 100, offset 6.",
+            "Message malformed or invalid: Unable decode apv: Invalid last symbol 100, offset 6.",
         )
         .await;
 
         _verify_unpack_malformed(
             remove_protected_field(ENCRYPTED_MSG_AUTH_X25519, "apv").as_str(),
-            "Malformed: Unable parse protected header: missing field `apv` at line 1 column 264",
+            "Message malformed or invalid: Unable parse protected header: missing field `apv` at line 1 column 264",
         )
         .await;
 
         _verify_unpack_malformed(
             update_protected_field(ENCRYPTED_MSG_AUTH_X25519, "apu", "invalid").as_str(),
-            "Malformed: Unable decode apu: Invalid last symbol 100, offset 6.",
+            "Message malformed or invalid: Unable decode apu: Invalid last symbol 100, offset 6.",
         )
         .await;
 
         _verify_unpack_malformed(
             remove_protected_field(ENCRYPTED_MSG_AUTH_X25519, "apu").as_str(),
-            "Malformed: SKID present, but no apu",
+            "Message malformed or invalid: SKID present, but no apu",
         )
         .await;
     }
@@ -1946,25 +1946,25 @@ mod test {
     async fn unpack_works_malformed_signed_msg() {
         _verify_unpack_malformed(
             update_field(SIGNED_MSG_ALICE_KEY_1, "payload", "invalid").as_str(),
-            "Malformed: Wrong signature",
+            "Message malformed or invalid: Wrong signature",
         )
         .await;
 
         _verify_unpack_malformed(
             remove_field(SIGNED_MSG_ALICE_KEY_1, "payload").as_str(),
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             update_field(SIGNED_MSG_ALICE_KEY_1, "signatures", "invalid").as_str(),
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             remove_field(SIGNED_MSG_ALICE_KEY_1, "signatures").as_str(),
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
     }
@@ -1973,91 +1973,91 @@ mod test {
     async fn unpack_works_malformed_plaintext_msg() {
         _verify_unpack_malformed(
             INVALID_PLAINTEXT_MSG_EMPTY,
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             INVALID_PLAINTEXT_MSG_STRING,
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             INVALID_PLAINTEXT_MSG_NO_ID,
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             INVALID_PLAINTEXT_MSG_NO_TYPE,
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             INVALID_PLAINTEXT_MSG_NO_BODY,
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             INVALID_PLAINTEXT_MSG_WRONG_TYP,
-            "Malformed: `typ` must be \"application/didcomm-plain+json\"",
+            "Message malformed or invalid: `typ` must be \"application/didcomm-plain+json\"",
         )
         .await;
 
         _verify_unpack_malformed(
             INVALID_PLAINTEXT_MSG_EMPTY_ATTACHMENTS,
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             INVALID_PLAINTEXT_MSG_ATTACHMENTS_NO_DATA,
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             INVALID_PLAINTEXT_MSG_ATTACHMENTS_EMPTY_DATA,
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             INVALID_PLAINTEXT_MSG_ATTACHMENTS_LINKS_NO_HASH,
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             INVALID_PLAINTEXT_MSG_ATTACHMENTS_AS_STRING,
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             INVALID_PLAINTEXT_MSG_ATTACHMENTS_AS_INT_ARRAY,
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             INVALID_PLAINTEXT_MSG_ATTACHMENTS_WRONG_DATA,
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             INVALID_PLAINTEXT_MSG_ATTACHMENTS_WRONG_ID,
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
 
         _verify_unpack_malformed(
             INVALID_PLAINTEXT_MSG_ATTACHMENTS_NULL_DATA,
-            "Malformed: Message is not a valid JWE, JWS or JWM",
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
         )
         .await;
     }
@@ -2094,7 +2094,7 @@ mod test {
         _verify_unpack_returns_error(
             PLAINTEXT_INVALID_FROM_PRIOR,
             ErrorKind::Malformed,
-            "Malformed: Unable to parse compactly serialized JWS",
+            "Message malformed or invalid: Unable to parse compactly serialized JWS",
         )
         .await;
     }
@@ -2104,7 +2104,7 @@ mod test {
         _verify_unpack_returns_error(
             PLAINTEXT_FROM_PRIOR_INVALID_SIGNATURE,
             ErrorKind::Malformed,
-            "Malformed: Unable to verify from_prior signature: Unable decode signature: Invalid last symbol 66, offset 85.",
+            "Message malformed or invalid: Unable to verify from_prior signature: Unable decode signature: Invalid last symbol 66, offset 85.",
         )
             .await;
     }

@@ -3,16 +3,16 @@ use serde_json::Value;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 /// Represents a DIDComm message attachment.
-/// 
+///
 /// Attachments allow DIDComm messages to include additional data such as
 /// files, images, or other binary content. The attachment can contain
 /// base64-encoded data, JSON structures, or references to external resources.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```rust
 /// use navia_didcomm::Attachment;
-/// 
+///
 /// // Create a base64 attachment
 /// let attachment = Attachment::base64("SGVsbG8gV29ybGQ=".to_string())
 ///     .id("attachment-1".to_string())
@@ -65,10 +65,10 @@ pub struct Attachment {
 
 impl Attachment {
     /// Creates a new attachment builder with base64-encoded data.
-    /// 
+    ///
     /// # Arguments
     /// * `base64` - The base64-encoded string containing the attachment data
-    /// 
+    ///
     /// # Returns
     /// An `AttachmentBuilder` for configuring additional attachment properties
     pub fn base64(base64: String) -> AttachmentBuilder {
@@ -78,10 +78,10 @@ impl Attachment {
     }
 
     /// Creates a new attachment builder with JSON data.
-    /// 
+    ///
     /// # Arguments
     /// * `json` - The JSON value to include as attachment data
-    /// 
+    ///
     /// # Returns
     /// An `AttachmentBuilder` for configuring additional attachment properties
     pub fn json(json: Value) -> AttachmentBuilder {
@@ -91,11 +91,11 @@ impl Attachment {
     }
 
     /// Creates a new attachment builder with external links.
-    /// 
+    ///
     /// # Arguments
     /// * `links` - URLs where the attachment content can be retrieved
     /// * `hash` - Cryptographic hash of the attachment content for integrity verification
-    /// 
+    ///
     /// # Returns
     /// An `AttachmentBuilder` for configuring additional attachment properties
     pub fn links(links: Vec<String>, hash: String) -> AttachmentBuilder {
@@ -110,17 +110,17 @@ impl Attachment {
 }
 
 /// Builder for creating DIDComm message attachments.
-/// 
+///
 /// The `AttachmentBuilder` provides a fluent interface for constructing
 /// attachments with various optional properties like ID, description,
 /// filename, media type, and more.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```rust
 /// use navia_didcomm::Attachment;
 /// use serde_json::json;
-/// 
+///
 /// // Build a complete attachment
 /// let attachment = Attachment::json(json!({"message": "hello"}))
 ///     .id("my-attachment".to_string())
@@ -154,7 +154,7 @@ impl AttachmentBuilder {
     }
 
     /// Sets the attachment identifier.
-    /// 
+    ///
     /// # Arguments
     /// * `id` - A unique identifier for this attachment within the message scope
     pub fn id(mut self, id: String) -> Self {
@@ -163,7 +163,7 @@ impl AttachmentBuilder {
     }
 
     /// Sets a human-readable description of the attachment.
-    /// 
+    ///
     /// # Arguments  
     /// * `description` - A text description explaining the attachment's purpose or content
     pub fn description(mut self, description: String) -> Self {
@@ -207,7 +207,7 @@ impl AttachmentBuilder {
     }
 
     /// Finalizes the attachment construction and returns the completed `Attachment`.
-    /// 
+    ///
     /// # Returns
     /// A fully constructed `Attachment` with all configured properties
     pub fn finalize(self) -> Attachment {
@@ -230,7 +230,7 @@ impl AttachmentBuilder {
 // It should work as we always have discrimination here.
 
 /// Data content of a DIDComm message attachment.
-/// 
+///
 /// Represents the different ways attachment data can be included:
 /// - Base64-encoded binary data embedded directly in the message
 /// - JSON data structures embedded in the message  
@@ -260,7 +260,7 @@ pub enum AttachmentData {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 /// Base64-encoded attachment data.
-/// 
+///
 /// Contains base64-encoded binary data that is embedded directly
 /// in the DIDComm message, optionally with a JWS signature.
 pub struct Base64AttachmentData {
@@ -274,7 +274,7 @@ pub struct Base64AttachmentData {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 /// JSON attachment data.
-/// 
+///
 /// Contains JSON data that is embedded directly in the DIDComm message,
 /// optionally with a JWS signature for integrity verification.
 pub struct JsonAttachmentData {
@@ -288,7 +288,7 @@ pub struct JsonAttachmentData {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 /// External links attachment data.
-/// 
+///
 /// Contains URLs pointing to external attachment content along with
 /// a cryptographic hash for integrity verification.
 pub struct LinksAttachmentData {

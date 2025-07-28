@@ -1,5 +1,6 @@
 use serde::Serialize;
 
+#[allow(clippy::result_large_err)]
 use crate::{
     did::DIDResolver,
     error::{err_msg, ErrorKind, Result, ResultContext},
@@ -78,7 +79,8 @@ impl Message {
         let key_id = *secrets_resolver
             .find_secrets(&authentications)
             .await
-            .context("Unable find secrets")?.first()
+            .context("Unable find secrets")?
+            .first()
             .ok_or_else(|| err_msg(ErrorKind::SecretNotFound, "No signer secrets found"))?;
 
         let secret = secrets_resolver
@@ -139,8 +141,8 @@ mod tests {
         alg::{ed25519::Ed25519KeyPair, k256::K256KeyPair, p256::P256KeyPair},
         sign::KeySigVerify,
     };
-        use std::borrow::Cow;
     use base64::prelude::*;
+    use std::borrow::Cow;
 
     use serde_json::Value;
 
@@ -252,7 +254,8 @@ mod tests {
             );
 
             let payload: Value = {
-                let payload = BASE64_URL_SAFE_NO_PAD.decode(msg.jws.payload)
+                let payload = BASE64_URL_SAFE_NO_PAD
+                    .decode(msg.jws.payload)
                     .expect("Unable decode_config");
 
                 serde_json::from_slice(&payload).expect("Unable from_str")
@@ -263,12 +266,7 @@ mod tests {
             assert_eq!(payload, exp_payload);
             assert_eq!(msg.jws.signatures.len(), 1);
 
-            assert_eq!(
-                msg.jws.signatures[0].header,
-                Header {
-                    kid: sign_by_kid
-                }
-            );
+            assert_eq!(msg.jws.signatures[0].header, Header { kid: sign_by_kid });
 
             let signer_key = match verification_material {
                 VerificationMaterial::JWK {
@@ -316,7 +314,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Illegal argument: `sign_from` value is not a valid DID or DID URL"
+            "Illegal argument provided: `sign_from` value is not a valid DID or DID URL"
         );
     }
 
@@ -358,7 +356,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Invalid state: Unable resolve signer did: Mock error"
+            "Invalid system state: Unable resolve signer did: Mock error"
         );
     }
 
@@ -420,7 +418,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Unsupported crypto or method: Unable instantiate sign key: Unsupported key type or curve"
+            "Unsupported cryptographic algorithm or method: Unable instantiate sign key: Unsupported key type or curve"
         );
     }
 

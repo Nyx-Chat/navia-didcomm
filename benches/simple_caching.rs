@@ -1,9 +1,7 @@
 //! Simple benchmark to test DID resolution caching effectiveness
 
 use criterion::{async_executor::FuturesExecutor, criterion_group, criterion_main, Criterion};
-use navia_didcomm::{
-    did::{resolvers::ExampleDIDResolver, CachingDIDResolver, DIDDoc, DIDResolver},
-};
+use navia_didcomm::did::{resolvers::ExampleDIDResolver, CachingDIDResolver, DIDDoc, DIDResolver};
 use serde_json::json;
 
 fn create_test_did_doc() -> DIDDoc {
@@ -43,7 +41,7 @@ async fn resolve_without_cache(resolver: &ExampleDIDResolver, repetitions: usize
 fn benchmarks(c: &mut Criterion) {
     let did_doc = create_test_did_doc();
     let resolver = ExampleDIDResolver::new(vec![did_doc]);
-    
+
     let repetitions = 100;
 
     let caching_resolver = CachingDIDResolver::new(&resolver);

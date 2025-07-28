@@ -82,24 +82,24 @@ fn default_typ() -> String {
 
 impl Message {
     /// Creates a new DIDComm message builder.
-    /// 
+    ///
     /// This is the primary way to construct DIDComm messages. The builder pattern
     /// allows you to set optional fields like recipients, sender, thread IDs, and attachments.
-    /// 
+    ///
     /// # Arguments
     /// * `id` - Unique identifier for this message
     /// * `type_` - Message type URI indicating the message schema and processing rules
     /// * `body` - The message payload as a JSON value
-    /// 
+    ///
     /// # Returns
     /// A `MessageBuilder` for configuring additional message properties
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
     /// use navia_didcomm::Message;
     /// use serde_json::json;
-    /// 
+    ///
     /// let message = Message::build(
     ///     "unique-message-id".to_string(),
     ///     "https://example.com/protocols/hello/1.0/greeting".to_string(),
@@ -129,28 +129,28 @@ impl Message {
 }
 
 /// Builder for constructing DIDComm messages.
-/// 
+///
 /// The `MessageBuilder` provides a fluent interface for creating DIDComm messages
 /// with various optional properties. All DIDComm messages require an ID, type, and body,
 /// but other fields like sender, recipients, thread IDs, and attachments are optional.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```rust
 /// use navia_didcomm::Message;
 /// use serde_json::json;
-/// 
+///
 /// // Simple message
 /// let msg = Message::build(
 ///     "msg-001".to_string(),
-///     "example/greeting".to_string(), 
+///     "example/greeting".to_string(),
 ///     json!({"hello": "world"})
 /// ).finalize();
-/// 
+///
 /// // Complex message with threading
 /// let msg = Message::build(
 ///     "msg-002".to_string(),
-///     "example/response".to_string(), 
+///     "example/response".to_string(),
 ///     json!({"status": "received"})
 /// )
 /// .to("did:example:bob".to_string())
@@ -192,10 +192,10 @@ impl MessageBuilder {
     }
 
     /// Sets the recipient of the message.
-    /// 
+    ///
     /// # Arguments
     /// * `to` - DID of the intended recipient
-    /// 
+    ///
     /// # Note
     /// This is equivalent to calling `to_many()` with a single recipient.
     /// To send to multiple recipients, use `to_many()` instead.
@@ -210,10 +210,10 @@ impl MessageBuilder {
     }
 
     /// Sets multiple recipients for the message.
-    /// 
+    ///
     /// # Arguments
     /// * `to` - Vector of DIDs representing the intended recipients
-    /// 
+    ///
     /// # Note  
     /// This can be called multiple times to add additional recipients.
     pub fn to_many(mut self, to: Vec<String>) -> Self {
@@ -228,7 +228,7 @@ impl MessageBuilder {
     }
 
     /// Sets the sender of the message.
-    /// 
+    ///
     /// # Arguments
     /// * `from` - DID of the message sender
     pub fn from(mut self, from: String) -> Self {
@@ -288,11 +288,11 @@ impl MessageBuilder {
     }
 
     /// Finalizes the message construction and returns the completed `Message`.
-    /// 
+    ///
     /// This consumes the builder and creates a `Message` instance with all
     /// the configured properties. The message will be in plaintext form and
     /// can then be packed using encryption or signing methods.
-    /// 
+    ///
     /// # Returns
     /// A fully constructed `Message` ready for packing and sending
     pub fn finalize(self) -> Message {

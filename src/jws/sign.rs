@@ -152,10 +152,7 @@ mod tests {
             let mut buf = vec![];
             let msg = jws::parse(&msg, &mut buf).expect("Unable parse");
 
-            assert_eq!(
-                msg.jws.payload,
-                BASE64_URL_SAFE_NO_PAD.encode(payload)
-            );
+            assert_eq!(msg.jws.payload, BASE64_URL_SAFE_NO_PAD.encode(payload));
 
             assert_eq!(msg.jws.signatures.len(), 1);
             assert_eq!(msg.jws.signatures[0].header.kid, kid);
@@ -242,7 +239,7 @@ mod tests {
 
             assert_eq!(
                 format!("{err}"),
-                "Invalid state: Unable create signature: Unsupported signature type"
+                "Invalid system state: Unable create signature: Unsupported signature type"
             );
         }
     }
@@ -283,7 +280,7 @@ mod tests {
 
             assert_eq!(
                 format!("{err}"),
-                "Unsupported crypto or method: Unsupported signature type"
+                "Unsupported cryptographic algorithm or method: Unsupported signature type"
             );
         }
     }
@@ -332,10 +329,7 @@ mod tests {
             let mut buf = vec![];
             let msg = jws::parse_compact(&msg, &mut buf).expect("Unable parse_compact");
 
-            assert_eq!(
-                msg.payload,
-                BASE64_URL_SAFE_NO_PAD.encode(payload)
-            );
+            assert_eq!(msg.payload, BASE64_URL_SAFE_NO_PAD.encode(payload));
 
             assert_eq!(msg.parsed_header.typ, typ);
             assert_eq!(msg.parsed_header.alg, alg);
@@ -428,7 +422,7 @@ mod tests {
 
             assert_eq!(
                 format!("{err}"),
-                "Invalid state: Unable create signature: Unsupported signature type"
+                "Invalid system state: Unable create signature: Unsupported signature type"
             );
         }
     }
@@ -473,7 +467,7 @@ mod tests {
 
             assert_eq!(
                 format!("{err}"),
-                "Unsupported crypto or method: Unsupported signature type"
+                "Unsupported cryptographic algorithm or method: Unsupported signature type"
             );
         }
     }

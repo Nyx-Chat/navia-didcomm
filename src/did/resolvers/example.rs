@@ -20,9 +20,6 @@ impl ExampleDIDResolver {
 #[cfg_attr(not(feature = "uniffi"), async_trait(?Send))]
 impl DIDResolver for ExampleDIDResolver {
     async fn resolve(&self, did: &str) -> Result<Option<DIDDoc>> {
-        Ok(self
-            .known_dids
-            .iter()
-            .find(|ddoc| ddoc.id == did).cloned())
+        Ok(self.known_dids.iter().find(|ddoc| ddoc.id == did).cloned())
     }
 }

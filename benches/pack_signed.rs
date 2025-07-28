@@ -6,7 +6,9 @@ pub(crate) use navia_didcomm as didcomm;
 mod test_vectors;
 
 use criterion::{async_executor::FuturesExecutor, criterion_group, criterion_main, Criterion};
-use navia_didcomm::{did::resolvers::ExampleDIDResolver, secrets::resolvers::ExampleSecretsResolver};
+use navia_didcomm::{
+    did::resolvers::ExampleDIDResolver, secrets::resolvers::ExampleSecretsResolver,
+};
 
 use test_vectors::{
     ALICE_AUTH_METHOD_25519, ALICE_AUTH_METHOD_P256, ALICE_AUTH_METHOD_SECPP256K1, ALICE_DID_DOC,

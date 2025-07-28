@@ -56,9 +56,9 @@ mod test_vectors;
 #[cfg(test)]
 mod debug_key_tests {
     use askar_crypto::alg::ed25519::Ed25519KeyPair;
+    use askar_crypto::alg::k256::K256KeyPair;
     use askar_crypto::alg::p256::P256KeyPair;
     use askar_crypto::alg::p384::P384KeyPair;
-    use askar_crypto::alg::k256::K256KeyPair;
     use askar_crypto::jwk::FromJwk;
 
     const ALICE_KEY_ED25519: &str = r#"
@@ -133,27 +133,26 @@ mod debug_key_tests {
     }
 }
 
-
 /// DIDComm cryptographic algorithms and protocol configuration.
-/// 
+///
 /// This module defines the supported encryption and signing algorithms
 /// for DIDComm v2 messages, including authentication encryption (authcrypt),
 /// anonymous encryption (anoncrypt), and digital signatures.
 pub mod algorithms;
 /// Decentralized Identifier (DID) resolution and document handling.
-/// 
+///
 /// This module provides interfaces for resolving DID documents and working
 /// with DID-based verification methods. It includes the core `DIDResolver` trait
 /// and supporting types for DID document structure and verification methods.
 pub mod did;
 /// Error types and handling for DIDComm operations.
-/// 
+///
 /// This module defines the comprehensive error system used throughout
 /// the library, including error kinds, result types, and extension traits
 /// for ergonomic error handling.
 pub mod error;
 /// DIDComm protocol implementations and message routing.
-/// 
+///
 /// This module contains implementations of DIDComm protocols including
 /// the forward/routing protocol for message mediation and multi-hop delivery.
 pub mod protocols;

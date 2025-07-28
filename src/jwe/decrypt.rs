@@ -6,6 +6,7 @@ use askar_crypto::{
 };
 use base64::prelude::*;
 
+#[allow(clippy::result_large_err)]
 use crate::{
     error::{err_msg, ErrorKind, Result, ResultContext, ResultExt},
     jwe::ParsedJWE,
@@ -45,13 +46,15 @@ impl<'a, 'b> ParsedJWE<'a, 'b> {
                 .ok_or_else(|| err_msg(ErrorKind::InvalidState, "Recipient not found"))?
                 .encrypted_key;
 
-            BASE64_URL_SAFE_NO_PAD.decode(encrypted_key)
+            BASE64_URL_SAFE_NO_PAD
+                .decode(encrypted_key)
                 .kind(ErrorKind::Malformed, "Unable decode encrypted_key")?
         };
 
         let epk = KE::from_jwk_value(&self.protected.epk).context("Unable instantiate epk")?;
 
-        let tag = BASE64_URL_SAFE_NO_PAD.decode(self.jwe.tag)
+        let tag = BASE64_URL_SAFE_NO_PAD
+            .decode(self.jwe.tag)
             .kind(ErrorKind::Malformed, "Unable decode tag")?;
 
         let kw = KDF::derive_key(
@@ -70,10 +73,12 @@ impl<'a, 'b> ParsedJWE<'a, 'b> {
             .unwrap_key(&encrypted_key)
             .kind(ErrorKind::Malformed, "Unable unwrap cek")?;
 
-        let ciphertext = BASE64_URL_SAFE_NO_PAD.decode(self.jwe.ciphertext)
+        let ciphertext = BASE64_URL_SAFE_NO_PAD
+            .decode(self.jwe.ciphertext)
             .kind(ErrorKind::Malformed, "Unable decode ciphertext")?;
 
-        let iv = BASE64_URL_SAFE_NO_PAD.decode(self.jwe.iv)
+        let iv = BASE64_URL_SAFE_NO_PAD
+            .decode(self.jwe.iv)
             .kind(ErrorKind::Malformed, "Unable decode iv")?;
 
         let plaintext = {
@@ -328,7 +333,7 @@ mod tests {
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::InvalidState);
-        assert_eq!(format!("{err}"), "Invalid state: Wrong skid used");
+        assert_eq!(format!("{err}"), "Invalid system state: Wrong skid used");
     }
 
     #[test]
@@ -346,7 +351,7 @@ mod tests {
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::InvalidState);
-        assert_eq!(format!("{err}"), "Invalid state: Wrong skid used");
+        assert_eq!(format!("{err}"), "Invalid system state: Wrong skid used");
     }
 
     #[test]
@@ -360,7 +365,7 @@ mod tests {
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::InvalidState);
-        assert_eq!(format!("{err}"), "Invalid state: Wrong skid used");
+        assert_eq!(format!("{err}"), "Invalid system state: Wrong skid used");
     }
 
     #[test]
@@ -378,7 +383,10 @@ mod tests {
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::InvalidState);
-        assert_eq!(format!("{err}"), "Invalid state: Recipient not found");
+        assert_eq!(
+            format!("{err}"),
+            "Invalid system state: Recipient not found"
+        );
     }
 
     #[test]
@@ -398,7 +406,7 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::Malformed);
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable decode encrypted_key: Invalid symbol 33, offset 0."
+            "Message malformed or invalid: Unable decode encrypted_key: Invalid symbol 33, offset 0."
         );
     }
 
@@ -420,7 +428,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable decode tag: Invalid symbol 33, offset 0."
+            "Message malformed or invalid: Unable decode tag: Invalid symbol 33, offset 0."
         );
     }
 
@@ -442,7 +450,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable decode iv: Invalid symbol 33, offset 0."
+            "Message malformed or invalid: Unable decode iv: Invalid symbol 33, offset 0."
         );
     }
 
@@ -464,7 +472,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable decode ciphertext: Invalid symbol 33, offset 0."
+            "Message malformed or invalid: Unable decode ciphertext: Invalid symbol 33, offset 0."
         );
     }
 
@@ -489,7 +497,7 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::Malformed);
         assert_eq!(
             format!("{err}"),
-            "Malformed: Uanble instantiate epk: Unable produce jwk"
+            "Message malformed or invalid: Uanble instantiate epk: Unable produce jwk"
         );
     }
 
@@ -498,7 +506,7 @@ mod tests {
         // Try parsing first - with base64 0.22, malformed data may be caught here
         let mut buf = vec![];
         let parse_result = jwe::parse(MSG_ANONCRYPT_P256_XC20P_EPK_WRONG_POINT, &mut buf);
-        
+
         if let Err(err) = parse_result {
             // Expected: malformed data caught at parsing stage
             assert_eq!(err.kind(), ErrorKind::Malformed);
@@ -626,7 +634,7 @@ mod tests {
 
             assert_eq!(
                 format!("{err}"),
-                "Malformed: Unable unwrap cek: Malformed: Unable decrypt key: Encryption error: Unable decrypt key: Encryption error",
+                "Message malformed or invalid: Unable unwrap cek: Message malformed or invalid: Unable decrypt key: Encryption error: Unable decrypt key: Encryption error",
             );
         }
     }
@@ -738,7 +746,7 @@ mod tests {
 
             assert_eq!(
                 format!("{err}"),
-                "Malformed: Unable unwrap cek: Malformed: Unable decrypt key: Encryption error: Unable decrypt key: Encryption error",
+                "Message malformed or invalid: Unable unwrap cek: Message malformed or invalid: Unable decrypt key: Encryption error: Unable decrypt key: Encryption error",
             );
         }
     }
@@ -965,7 +973,7 @@ mod tests {
 
             assert_eq!(
                 format!("{err}"),
-                "Malformed: Unable decrypt content: AEAD decryption error",
+                "Message malformed or invalid: Unable decrypt content: AEAD decryption error",
             );
         }
     }

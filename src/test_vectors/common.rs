@@ -24,10 +24,9 @@ pub fn update_protected_field(msg: &str, field: &str, value: &str) -> String {
     let mut msg_dict: Map<String, Value> = parsed.as_object().unwrap().clone();
 
     let mut buffer = Vec::<u8>::new();
-    let decoded = BASE64_URL_SAFE_NO_PAD.decode(
-        msg_dict.get("protected").unwrap().as_str().unwrap(),
-    )
-    .unwrap();
+    let decoded = BASE64_URL_SAFE_NO_PAD
+        .decode(msg_dict.get("protected").unwrap().as_str().unwrap())
+        .unwrap();
     buffer.clear();
     buffer.extend_from_slice(&decoded);
     let parsed_protected: Value = serde_json::from_slice(&buffer).unwrap();
@@ -45,10 +44,9 @@ pub fn remove_protected_field(msg: &str, field: &str) -> String {
     let mut msg_dict: Map<String, Value> = parsed.as_object().unwrap().clone();
 
     let mut buffer = Vec::<u8>::new();
-    let decoded = BASE64_URL_SAFE_NO_PAD.decode(
-        msg_dict.get("protected").unwrap().as_str().unwrap(),
-    )
-    .unwrap();
+    let decoded = BASE64_URL_SAFE_NO_PAD
+        .decode(msg_dict.get("protected").unwrap().as_str().unwrap())
+        .unwrap();
     buffer.clear();
     buffer.extend_from_slice(&decoded);
     let parsed_protected: Value = serde_json::from_slice(&buffer).unwrap();

@@ -137,7 +137,8 @@ pub(crate) async fn _try_unpack_sign<'dr>(
     }
 
     // TODO: More precise error conversion
-    let payload = BASE64_URL_SAFE_NO_PAD.decode(parsed_jws.jws.payload)
+    let payload = BASE64_URL_SAFE_NO_PAD
+        .decode(parsed_jws.jws.payload)
         .kind(ErrorKind::Malformed, "Signed payloa is invalid base64")?;
 
     let payload =

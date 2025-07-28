@@ -89,7 +89,8 @@ impl FromPrior {
         let kid = *secrets_resolver
             .find_secrets(&authentication_kids)
             .await
-            .context("Unable to find secrets")?.first()
+            .context("Unable to find secrets")?
+            .first()
             .ok_or_else(|| {
                 err_msg(
                     ErrorKind::SecretNotFound,
@@ -271,7 +272,7 @@ mod tests {
             &FROM_PRIOR_FULL,
             &ALICE_SECRET_AUTH_KEY_ED25519.id,
             ErrorKind::IllegalArgument,
-            "Illegal argument: from_prior issuer kid does not belong to from_prior `iss`",
+            "Illegal argument provided: from_prior issuer kid does not belong to from_prior `iss`",
         )
         .await;
 
@@ -279,7 +280,7 @@ mod tests {
             &FROM_PRIOR_FULL,
             ALICE_DID,
             ErrorKind::IllegalArgument,
-            "Illegal argument: issuer_kid content is not DID URL",
+            "Illegal argument provided: issuer_kid content is not DID URL",
         )
         .await;
 
@@ -287,7 +288,7 @@ mod tests {
             &FROM_PRIOR_FULL,
             "invalid",
             ErrorKind::IllegalArgument,
-            "Illegal argument: issuer_kid content is not DID URL",
+            "Illegal argument provided: issuer_kid content is not DID URL",
         )
         .await;
 
@@ -316,35 +317,35 @@ mod tests {
         _from_prior_pack_works_invalid(
             &FROM_PRIOR_INVALID_ISS,
             ErrorKind::Malformed,
-            "Malformed: from_prior `iss` must be a non-fragment DID",
+            "Message malformed or invalid: from_prior `iss` must be a non-fragment DID",
         )
         .await;
 
         _from_prior_pack_works_invalid(
             &FROM_PRIOR_INVALID_ISS_DID_URL,
             ErrorKind::Malformed,
-            "Malformed: from_prior `iss` must be a non-fragment DID",
+            "Message malformed or invalid: from_prior `iss` must be a non-fragment DID",
         )
         .await;
 
         _from_prior_pack_works_invalid(
             &FROM_PRIOR_INVALID_SUB,
             ErrorKind::Malformed,
-            "Malformed: from_prior `sub` must be a non-fragment DID",
+            "Message malformed or invalid: from_prior `sub` must be a non-fragment DID",
         )
         .await;
 
         _from_prior_pack_works_invalid(
             &FROM_PRIOR_INVALID_SUB_DID_URL,
             ErrorKind::Malformed,
-            "Malformed: from_prior `sub` must be a non-fragment DID",
+            "Message malformed or invalid: from_prior `sub` must be a non-fragment DID",
         )
         .await;
 
         _from_prior_pack_works_invalid(
             &FROM_PRIOR_INVALID_EQUAL_ISS_AND_SUB,
             ErrorKind::Malformed,
-            "Malformed: from_prior `iss` and `sub` values must not be equal",
+            "Message malformed or invalid: from_prior `iss` and `sub` values must not be equal",
         )
         .await;
 

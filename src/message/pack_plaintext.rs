@@ -172,7 +172,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: from_prior `sub` value is not equal to message `from` value"
+            "Message malformed or invalid: from_prior `sub` value is not equal to message `from` value"
         );
     }
 }

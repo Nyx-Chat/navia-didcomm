@@ -26,7 +26,8 @@ impl<'a, 'b> ParsedJWS<'a, 'b> {
         let sig_type = protected.alg.sig_type()?;
         let sign_input = format!("{}.{}", signature.protected, self.jws.payload);
 
-        let signature = BASE64_URL_SAFE_NO_PAD.decode(signature.signature)
+        let signature = BASE64_URL_SAFE_NO_PAD
+            .decode(signature.signature)
             .kind(ErrorKind::Malformed, "Unable decode signature")?;
 
         let valid = key
@@ -42,7 +43,8 @@ impl<'a> ParsedCompactJWS<'a> {
         let sig_type = self.parsed_header.alg.sig_type()?;
         let sign_input = format!("{}.{}", self.header, self.payload);
 
-        let signature = BASE64_URL_SAFE_NO_PAD.decode(self.signature)
+        let signature = BASE64_URL_SAFE_NO_PAD
+            .decode(self.signature)
             .kind(ErrorKind::Malformed, "Unable decode signature")?;
 
         let valid = key
@@ -201,7 +203,7 @@ mod tests {
 
             assert_eq!(
                 format!("{err}"),
-                "Malformed: Unable verify signature: Unsupported signature type"
+                "Message malformed or invalid: Unable verify signature: Unsupported signature type"
             );
         }
     }
@@ -227,7 +229,7 @@ mod tests {
 
             let err = res.expect_err("res is ok");
             assert_eq!(err.kind(), ErrorKind::InvalidState);
-            assert_eq!(format!("{err}"), "Invalid state: KID not found");
+            assert_eq!(format!("{err}"), "Invalid system state: KID not found");
         }
     }
 
@@ -263,7 +265,7 @@ mod tests {
 
             assert_eq!(
                 format!("{err}"),
-                "Malformed: Unable decode signature: Invalid symbol 33, offset 0."
+                "Message malformed or invalid: Unable decode signature: Invalid symbol 33, offset 0."
             );
         }
     }
@@ -303,7 +305,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable verify signature: Unsupported signature type"
+            "Message malformed or invalid: Unable verify signature: Unsupported signature type"
         );
     }
 
@@ -319,7 +321,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable decode signature: Invalid symbol 33, offset 0."
+            "Message malformed or invalid: Unable decode signature: Invalid symbol 33, offset 0."
         );
     }
 

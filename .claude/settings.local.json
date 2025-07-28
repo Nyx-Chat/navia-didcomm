@@ -8,7 +8,9 @@
       "Bash(cargo clippy:*)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:crates.io)",
-      "WebFetch(domain:identity.foundation)"
+      "WebFetch(domain:identity.foundation)",
+      "Bash(find:*)",
+      "Bash(ls:*)"
     ],
     "deny": []
   }

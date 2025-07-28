@@ -1,5 +1,8 @@
 use askar_crypto::{
-    alg::{ed25519::Ed25519KeyPair, k256::K256KeyPair, p256::P256KeyPair, p384::P384KeyPair, x25519::X25519KeyPair},
+    alg::{
+        ed25519::Ed25519KeyPair, k256::K256KeyPair, p256::P256KeyPair, p384::P384KeyPair,
+        x25519::X25519KeyPair,
+    },
     jwk::{FromJwk, ToJwk},
 };
 

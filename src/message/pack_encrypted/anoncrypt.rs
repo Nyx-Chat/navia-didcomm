@@ -62,9 +62,7 @@ pub(crate) async fn anoncrypt<'dr, 'sr>(
                 .ok_or_else(|| {
                     err_msg(
                         ErrorKind::Malformed,
-                        format!(
-                            "No verification material found for recipient key agreement {kid}"
-                        ),
+                        format!("No verification material found for recipient key agreement {kid}"),
                     )
                 })
         })

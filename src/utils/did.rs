@@ -1,5 +1,6 @@
 use askar_crypto::alg::{
-    ed25519::Ed25519KeyPair, k256::K256KeyPair, p256::P256KeyPair, p384::P384KeyPair, x25519::X25519KeyPair,
+    ed25519::Ed25519KeyPair, k256::K256KeyPair, p256::P256KeyPair, p384::P384KeyPair,
+    x25519::X25519KeyPair,
 };
 use askar_crypto::repr::{KeyPublicBytes, KeySecretBytes};
 use base64::prelude::*;
@@ -122,8 +123,7 @@ impl AsKnownKeyPair for VerificationMethod {
                 let decoded_value = bs58::decode(value)
                     .into_vec()
                     .to_didcomm("Wrong base58 value in verification material")?;
-                let base64_url_value =
-                    BASE64_URL_SAFE_NO_PAD.encode(&decoded_value);
+                let base64_url_value = BASE64_URL_SAFE_NO_PAD.encode(&decoded_value);
 
                 let jwk = json!({
                     "kty": "OKP",
@@ -148,8 +148,7 @@ impl AsKnownKeyPair for VerificationMethod {
                 let decoded_value = bs58::decode(value)
                     .into_vec()
                     .to_didcomm("Wrong base58 value in verification material")?;
-                let base64_url_value =
-                    BASE64_URL_SAFE_NO_PAD.encode(&decoded_value);
+                let base64_url_value = BASE64_URL_SAFE_NO_PAD.encode(&decoded_value);
 
                 let jwk = json!({
                     "kty": "OKP",
@@ -188,8 +187,7 @@ impl AsKnownKeyPair for VerificationMethod {
                         "Wrong codec in multibase secret material",
                     ))?
                 }
-                let base64_url_value =
-                    BASE64_URL_SAFE_NO_PAD.encode(decoded_value);
+                let base64_url_value = BASE64_URL_SAFE_NO_PAD.encode(decoded_value);
 
                 let jwk = json!({
                     "kty": "OKP",
@@ -228,8 +226,7 @@ impl AsKnownKeyPair for VerificationMethod {
                         "Wrong codec in multibase secret material",
                     ))?
                 }
-                let base64_url_value =
-                    BASE64_URL_SAFE_NO_PAD.encode(decoded_value);
+                let base64_url_value = BASE64_URL_SAFE_NO_PAD.encode(decoded_value);
 
                 let jwk = json!({
                     "kty": "OKP",

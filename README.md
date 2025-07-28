@@ -1,9 +1,9 @@
 # Navia-DIDComm
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Crates.io](https://img.shields.io/crates/v/navia-didcomm.svg)](https://crates.io/crates/navia-didcomm)
-[![Documentation](https://docs.rs/navia-didcomm/badge.svg)](https://docs.rs/navia-didcomm)
-[![Build Status](https://github.com/Nyx-Chat/navia-didcomm/workflows/CI/badge.svg)](https://github.com/Nyx-Chat/navia-didcomm/actions)
+[![License](https://img.shields.io/badge/License-Proprietary-red.svg)](./LICENSE)
+[![GitHub Package Registry](https://img.shields.io/badge/GitHub%20Packages-private-blue.svg)](https://github.com/nyx-chat/navia-didcomm/packages)
+[![Build Status](https://github.com/nyx-chat/navia-didcomm/workflows/PR%20Validation/badge.svg)](https://github.com/nyx-chat/navia-didcomm/actions)
+[![Tests](https://img.shields.io/badge/tests-190%20passing-green.svg)](https://github.com/nyx-chat/navia-didcomm/actions)
 
 **Production-ready DIDComm v2 implementation for secure peer-to-peer messaging**
 
@@ -25,8 +25,11 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-navia-didcomm = "1.0"
+# For navia (UniFFI wrapper) and mediator servers
+navia-didcomm = { git = "https://github.com/nyx-chat/navia-didcomm", version = "1.0.0" }
 ```
+
+> **Note**: This is a private library for the Nyx ecosystem. Access requires authentication to the nyx-chat GitHub organization.
 
 ## Run examples
 

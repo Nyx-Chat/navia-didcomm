@@ -8,6 +8,7 @@ use askar_crypto::{
 use base64::prelude::*;
 use std::borrow::Cow;
 
+#[allow(clippy::result_large_err)]
 use sha2::{Digest, Sha256};
 
 use crate::{
@@ -442,6 +443,6 @@ mod tests {
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::InvalidState);
-        assert_eq!(format!("{err}"), "Invalid state: Unable derive kw: Invalid state: No sender key for ecdh-1pu: No sender key for ecdh-1pu");
+        assert_eq!(format!("{err}"), "Invalid system state: Unable derive kw: Invalid system state: No sender key for ecdh-1pu: No sender key for ecdh-1pu");
     }
 }

@@ -128,6 +128,7 @@ pub(crate) enum KnownKeyPair {
     Ed25519(Ed25519KeyPair),
     X25519(X25519KeyPair),
     P256(P256KeyPair),
+    #[allow(dead_code)]
     P384(P384KeyPair),
     K256(K256KeyPair),
 }
@@ -169,7 +170,8 @@ pub(crate) trait AsKnownKeyPair {
         }
     }
 
-    fn as_p384(&self) -> Result<P384KeyPair> {
+    #[allow(dead_code)]
+        fn as_p384(&self) -> Result<P384KeyPair> {
         if self.key_alg() != KnownKeyAlg::P384 {
             Err(err_msg(ErrorKind::InvalidState, "Unexpected key alg"))?
         }

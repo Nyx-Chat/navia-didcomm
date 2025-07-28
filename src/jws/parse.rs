@@ -1,9 +1,9 @@
-use base64::prelude::*;
 use crate::error::ToResult;
 use crate::{
     error::{err_msg, ErrorKind, Result, ResultExt},
     jws::envelope::{CompactHeader, ProtectedHeader, JWS},
 };
+use base64::prelude::*;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct ParsedJWS<'a, 'b> {
@@ -16,14 +16,14 @@ pub(crate) fn parse<'a, 'b>(jws: &'a str, buf: &'b mut Vec<Vec<u8>>) -> Result<P
 }
 
 impl<'a> JWS<'a> {
-    pub(crate) fn from_str(s: &str) -> Result<JWS> {
+    pub(crate) fn from_str(s: &str) -> Result<JWS<'_>> {
         serde_json::from_str(s).to_didcomm("Unable parse jws")
     }
 
     pub(crate) fn parse<'b>(self, buf: &'b mut Vec<Vec<u8>>) -> Result<ParsedJWS<'a, 'b>> {
         let protected = {
             let len = self.signatures.len();
-            let mut protected = Vec::<ProtectedHeader>::with_capacity(len);
+            let mut protected = Vec::<ProtectedHeader<'_>>::with_capacity(len);
             buf.resize(len, vec![]);
 
             for (i, b) in buf.iter_mut().enumerate() {
@@ -32,12 +32,13 @@ impl<'a> JWS<'a> {
                     .get(i)
                     .ok_or_else(|| err_msg(ErrorKind::InvalidState, "Invalid signature index"))?;
 
-                let decoded = BASE64_URL_SAFE_NO_PAD.decode(signature.protected)
+                let decoded = BASE64_URL_SAFE_NO_PAD
+                    .decode(signature.protected)
                     .kind(ErrorKind::Malformed, "Unable decode protected header")?;
                 b.clear();
                 b.extend_from_slice(&decoded);
 
-                let p: ProtectedHeader =
+                let p: ProtectedHeader<'_> =
                     serde_json::from_slice(b).to_didcomm("Unable parse protected header")?;
 
                 protected.push(p);
@@ -77,12 +78,13 @@ pub(crate) fn parse_compact<'a>(
     let payload = segments[1];
     let signature = segments[2];
 
-    let decoded = BASE64_URL_SAFE_NO_PAD.decode(header)
+    let decoded = BASE64_URL_SAFE_NO_PAD
+        .decode(header)
         .kind(ErrorKind::Malformed, "Unable decode header")?;
     buf.clear();
     buf.extend_from_slice(&decoded);
 
-    let parsed_header: CompactHeader =
+    let parsed_header: CompactHeader<'_> =
         serde_json::from_slice(buf).kind(ErrorKind::Malformed, "Unable parse header")?;
 
     Ok(ParsedCompactJWS {
@@ -308,7 +310,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable parse jws: trailing comma at line 10 column 19"
+            "Message malformed or invalid: Unable parse jws: trailing comma at line 10 column 19"
         );
     }
 
@@ -336,7 +338,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable parse jws: missing field `kid` at line 9 column 17"
+            "Message malformed or invalid: Unable parse jws: missing field `kid` at line 9 column 17"
         );
     }
 
@@ -365,7 +367,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable decode protected header: Invalid symbol 33, offset 0."
+            "Message malformed or invalid: Unable decode protected header: Invalid symbol 33, offset 0."
         );
     }
 
@@ -394,7 +396,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable parse protected header: key must be a string at line 1 column 2"
+            "Message malformed or invalid: Unable parse protected header: key must be a string at line 1 column 2"
         );
     }
 
@@ -423,7 +425,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable parse protected header: missing field `alg` at line 1 column 41"
+            "Message malformed or invalid: Unable parse protected header: missing field `alg` at line 1 column 41"
         );
     }
 
@@ -525,7 +527,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable to parse compactly serialized JWS"
+            "Message malformed or invalid: Unable to parse compactly serialized JWS"
         );
     }
 
@@ -555,7 +557,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable to parse compactly serialized JWS"
+            "Message malformed or invalid: Unable to parse compactly serialized JWS"
         );
     }
 
@@ -582,7 +584,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable decode header: Invalid symbol 33, offset 0."
+            "Message malformed or invalid: Unable decode header: Invalid symbol 33, offset 0."
         );
     }
 
@@ -609,7 +611,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable parse header: key must be a string at line 1 column 2"
+            "Message malformed or invalid: Unable parse header: key must be a string at line 1 column 2"
         );
     }
 
@@ -634,7 +636,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Malformed: Unable parse header: missing field `alg` at line 1 column 55"
+            "Message malformed or invalid: Unable parse header: missing field `alg` at line 1 column 55"
         );
     }
 }

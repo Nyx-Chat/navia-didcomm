@@ -92,7 +92,8 @@ pub(crate) async fn _try_unpack_authcrypt<'dr, 'sr>(
         .collect();
 
     let to_kid = to_kids
-        .first().copied()
+        .first()
+        .copied()
         .ok_or_else(|| err_msg(ErrorKind::Malformed, "No recipient keys found"))?;
 
     let (to_did, _) = did_or_url(to_kid);
