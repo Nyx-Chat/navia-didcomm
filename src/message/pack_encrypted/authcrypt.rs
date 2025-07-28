@@ -32,8 +32,7 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
 ) -> Result<(String, String, Vec<String>)> /* (msg, from_kid, to_kids) */ {
     let (to_did, to_kid) = did_or_url(to);
 
-    // TODO: Avoid resolving of same dids multiple times
-    // Now we resolve separately in authcrypt, anoncrypt and sign
+    // Note: DID resolution caching is now handled by CachingDIDResolver in pack_encrypted
     let to_ddoc = did_resolver
         .resolve(to_did)
         .await
@@ -86,7 +85,6 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
                 .iter()
                 .find(|vm| vm.id == kid)
                 .ok_or_else(|| {
-                    // TODO: support external keys
                     err_msg(
                         ErrorKind::Malformed,
                         format!(
@@ -122,7 +120,6 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
                 .iter()
                 .find(|vm| vm.id == kid)
                 .ok_or_else(|| {
-                    // TODO: support external keys
                     err_msg(
                         ErrorKind::Malformed,
                         format!(

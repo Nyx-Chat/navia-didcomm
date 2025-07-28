@@ -27,8 +27,7 @@ pub(crate) async fn anoncrypt<'dr, 'sr>(
 ) -> Result<(String, Vec<String>)> /* (msg, to_kids) */ {
     let (to_did, to_kid) = did_or_url(to);
 
-    // TODO: Avoid resolving of same dids multiple times
-    // Now we resolve separately in authcrypt, anoncrypt and sign
+    // Note: DID resolution caching is now handled by CachingDIDResolver in pack_encrypted
     let to_ddoc = did_resolver
         .resolve(to_did)
         .await
@@ -60,10 +59,11 @@ pub(crate) async fn anoncrypt<'dr, 'sr>(
                 .iter()
                 .find(|vm| vm.id == kid)
                 .ok_or_else(|| {
-                    // TODO: support external keys
                     err_msg(
-                        ErrorKind::Unsupported,
-                        "External keys are unsupported in this version",
+                        ErrorKind::Malformed,
+                        format!(
+                            "No verification material found for recipient key agreement {kid}"
+                        ),
                     )
                 })
         })

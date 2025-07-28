@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::{
     algorithms::{AnonCryptAlg, AuthCryptAlg},
-    did::DIDResolver,
+    did::{DIDResolver, CachingDIDResolver},
     error::{err_msg, ErrorKind, Result, ResultContext},
     protocols::routing::wrap_in_forward_if_needed,
     secrets::SecretsResolver,
@@ -84,8 +84,9 @@ impl Message {
         options: &PackEncryptedOptions,
     ) -> Result<(String, PackEncryptedMetadata)> {
         self._validate_pack_encrypted(to, from, sign_by)?;
-        // TODO: Think how to avoid resolving of did multiple times
-        // and perform async operations in parallel
+        
+        // Use caching resolver to avoid duplicate DID resolutions
+        let caching_resolver = CachingDIDResolver::new(did_resolver);
 
         // TODO:
         // 1. Extract JWE-related steps to a separate method, so that pack_encrypted uses
@@ -96,14 +97,14 @@ impl Message {
 
         let (msg, sign_by_kid) = if let Some(sign_by) = sign_by {
             let (msg, PackSignedMetadata { sign_by_kid }) = self
-                .pack_signed(sign_by, did_resolver, secrets_resolver)
+                .pack_signed(sign_by, &caching_resolver, secrets_resolver)
                 .await
                 .context("Unable produce sign envelope")?;
 
             (msg, Some(sign_by_kid))
         } else {
             let msg = self
-                .pack_plaintext(did_resolver)
+                .pack_plaintext(&caching_resolver)
                 .await
                 .context("Unable produce plaintext")?;
             (msg, None)
@@ -113,7 +114,7 @@ impl Message {
             let (msg, from_kid, to_kids) = authcrypt(
                 to,
                 from,
-                did_resolver,
+                &caching_resolver,
                 secrets_resolver,
                 msg.as_bytes(),
                 &options.enc_alg_auth,
@@ -125,13 +126,13 @@ impl Message {
             (msg, Some(from_kid), to_kids)
         } else {
             let (msg, to_kids) =
-                anoncrypt(to, did_resolver, msg.as_bytes(), &options.enc_alg_anon).await?;
+                anoncrypt(to, &caching_resolver, msg.as_bytes(), &options.enc_alg_anon).await?;
 
             (msg, None, to_kids)
         };
 
         let (msg, messaging_service) =
-            match wrap_in_forward_if_needed(&msg, to, did_resolver, options).await? {
+            match wrap_in_forward_if_needed(&msg, to, &caching_resolver, options).await? {
                 Some((forward_msg, messaging_service)) => (forward_msg, Some(messaging_service)),
                 None => (msg, None),
             };

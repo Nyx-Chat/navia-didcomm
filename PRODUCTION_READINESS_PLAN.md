@@ -44,10 +44,10 @@ Transform the forked `didcomm` crate into production-ready `navia-didcomm` v1.0.
 ### **P1.3: Resolve Critical TODOs** (1 week)
 Priority TODOs that block production use:
 
-- [ ] **External Key Support**
-  - `src/message/pack_encrypted/authcrypt.rs:89` - External keys
-  - `src/message/pack_encrypted/anoncrypt.rs:63` - External keys
-  - Implement external key resolution mechanism
+- [x] **External Key Support** ✅ (Already implemented - removed misleading TODO comments)
+  - External key references in `key_agreement` are properly resolved via `verification_method` lookups
+  - Previous TODO comments were misleading - they only triggered on malformed DID documents
+  - The library correctly handles DID URL references like `"did:example:alice#key-1"`
 
 - [ ] **Performance Optimizations**
   - `src/message/pack_encrypted/authcrypt.rs:35` - Avoid duplicate DID resolution
