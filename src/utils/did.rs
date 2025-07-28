@@ -1,7 +1,9 @@
 use askar_crypto::alg::{
-    ed25519::Ed25519KeyPair, k256::K256KeyPair, p256::P256KeyPair, x25519::X25519KeyPair,
+    ed25519::Ed25519KeyPair, k256::K256KeyPair, p256::P256KeyPair, p384::P384KeyPair,
+    x25519::X25519KeyPair,
 };
 use askar_crypto::repr::{KeyPublicBytes, KeySecretBytes};
+use base64::prelude::*;
 use serde_json::{json, Value};
 use std::io::Cursor;
 use varint::{VarintRead, VarintWrite};
@@ -17,7 +19,7 @@ use crate::{
 
 pub(crate) fn is_did(did: &str) -> bool {
     let parts: Vec<_> = did.split(':').collect();
-    return parts.len() >= 3 && parts.get(0).unwrap() == &"did";
+    parts.len() >= 3 && parts.first().unwrap() == &"did"
 }
 
 pub(crate) fn did_or_url(did_or_url: &str) -> (&str, Option<&str>) {
@@ -39,6 +41,7 @@ impl AsKnownKeyPair for VerificationMethod {
                 },
             ) => match (value["kty"].as_str(), value["crv"].as_str()) {
                 (Some(kty), Some(crv)) if kty == "EC" && crv == "P-256" => KnownKeyAlg::P256,
+                (Some(kty), Some(crv)) if kty == "EC" && crv == "P-384" => KnownKeyAlg::P384,
                 (Some(kty), Some(crv)) if kty == "EC" && crv == "secp256k1" => KnownKeyAlg::K256,
                 (Some(kty), Some(crv)) if kty == "OKP" && crv == "Ed25519" => KnownKeyAlg::Ed25519,
                 (Some(kty), Some(crv)) if kty == "OKP" && crv == "X25519" => KnownKeyAlg::X25519,
@@ -85,6 +88,11 @@ impl AsKnownKeyPair for VerificationMethod {
                         .kind(ErrorKind::Malformed, "Unable parse jwk")
                         .map(KnownKeyPair::P256)
                 }
+                (Some(kty), Some(crv)) if kty == "EC" && crv == "P-384" => {
+                    P384KeyPair::from_jwk_value(value)
+                        .kind(ErrorKind::Malformed, "Unable parse jwk")
+                        .map(KnownKeyPair::P384)
+                }
                 (Some(kty), Some(crv)) if kty == "EC" && crv == "secp256k1" => {
                     K256KeyPair::from_jwk_value(value)
                         .kind(ErrorKind::Malformed, "Unable parse jwk")
@@ -115,8 +123,7 @@ impl AsKnownKeyPair for VerificationMethod {
                 let decoded_value = bs58::decode(value)
                     .into_vec()
                     .to_didcomm("Wrong base58 value in verification material")?;
-                let base64_url_value =
-                    base64::encode_config(&decoded_value, base64::URL_SAFE_NO_PAD);
+                let base64_url_value = BASE64_URL_SAFE_NO_PAD.encode(&decoded_value);
 
                 let jwk = json!({
                     "kty": "OKP",
@@ -141,8 +148,7 @@ impl AsKnownKeyPair for VerificationMethod {
                 let decoded_value = bs58::decode(value)
                     .into_vec()
                     .to_didcomm("Wrong base58 value in verification material")?;
-                let base64_url_value =
-                    base64::encode_config(&decoded_value, base64::URL_SAFE_NO_PAD);
+                let base64_url_value = BASE64_URL_SAFE_NO_PAD.encode(&decoded_value);
 
                 let jwk = json!({
                     "kty": "OKP",
@@ -181,8 +187,7 @@ impl AsKnownKeyPair for VerificationMethod {
                         "Wrong codec in multibase secret material",
                     ))?
                 }
-                let base64_url_value =
-                    base64::encode_config(&decoded_value, base64::URL_SAFE_NO_PAD);
+                let base64_url_value = BASE64_URL_SAFE_NO_PAD.encode(decoded_value);
 
                 let jwk = json!({
                     "kty": "OKP",
@@ -221,8 +226,7 @@ impl AsKnownKeyPair for VerificationMethod {
                         "Wrong codec in multibase secret material",
                     ))?
                 }
-                let base64_url_value =
-                    base64::encode_config(&decoded_value, base64::URL_SAFE_NO_PAD);
+                let base64_url_value = BASE64_URL_SAFE_NO_PAD.encode(decoded_value);
 
                 let jwk = json!({
                     "kty": "OKP",
@@ -255,6 +259,7 @@ impl AsKnownKeyPair for Secret {
                 },
             ) => match (value["kty"].as_str(), value["crv"].as_str()) {
                 (Some(kty), Some(crv)) if kty == "EC" && crv == "P-256" => KnownKeyAlg::P256,
+                (Some(kty), Some(crv)) if kty == "EC" && crv == "P-384" => KnownKeyAlg::P384,
                 (Some(kty), Some(crv)) if kty == "EC" && crv == "secp256k1" => KnownKeyAlg::K256,
                 (Some(kty), Some(crv)) if kty == "OKP" && crv == "Ed25519" => KnownKeyAlg::Ed25519,
                 (Some(kty), Some(crv)) if kty == "OKP" && crv == "X25519" => KnownKeyAlg::X25519,
@@ -301,6 +306,11 @@ impl AsKnownKeyPair for Secret {
                         .kind(ErrorKind::Malformed, "Unable parse jwk")
                         .map(KnownKeyPair::P256)
                 }
+                (Some(kty), Some(crv)) if kty == "EC" && crv == "P-384" => {
+                    P384KeyPair::from_jwk_value(value)
+                        .kind(ErrorKind::Malformed, "Unable parse jwk")
+                        .map(KnownKeyPair::P384)
+                }
                 (Some(kty), Some(crv)) if kty == "EC" && crv == "secp256k1" => {
                     K256KeyPair::from_jwk_value(value)
                         .kind(ErrorKind::Malformed, "Unable parse jwk")
@@ -341,12 +351,12 @@ impl AsKnownKeyPair for Secret {
                 });
 
                 key_pair.with_public_bytes(|buf| {
-                    jwk["x"] = Value::String(base64::encode_config(buf, base64::URL_SAFE_NO_PAD))
+                    jwk["x"] = Value::String(BASE64_URL_SAFE_NO_PAD.encode(buf))
                 });
 
                 key_pair.with_secret_bytes(|buf| {
                     if let Some(sk) = buf {
-                        jwk["d"] = Value::String(base64::encode_config(sk, base64::URL_SAFE_NO_PAD))
+                        jwk["d"] = Value::String(BASE64_URL_SAFE_NO_PAD.encode(sk))
                     }
                 });
 
@@ -367,8 +377,8 @@ impl AsKnownKeyPair for Secret {
 
                 let curve25519_point_size = 32;
                 let (d_value, x_value) = decoded_value.split_at(curve25519_point_size);
-                let base64_url_d_value = base64::encode_config(&d_value, base64::URL_SAFE_NO_PAD);
-                let base64_url_x_value = base64::encode_config(&x_value, base64::URL_SAFE_NO_PAD);
+                let base64_url_d_value = BASE64_URL_SAFE_NO_PAD.encode(d_value);
+                let base64_url_x_value = BASE64_URL_SAFE_NO_PAD.encode(x_value);
 
                 let jwk = json!({"kty": "OKP",
                     "crv": "Ed25519",
@@ -405,7 +415,7 @@ impl AsKnownKeyPair for Secret {
                     ))?
                 }
 
-                let key_pair = X25519KeyPair::from_secret_bytes(&decoded_value)
+                let key_pair = X25519KeyPair::from_secret_bytes(decoded_value)
                     .kind(ErrorKind::Malformed, "Unable parse x25519 secret material")?;
 
                 let mut jwk = json!({
@@ -414,12 +424,12 @@ impl AsKnownKeyPair for Secret {
                 });
 
                 key_pair.with_public_bytes(|buf| {
-                    jwk["x"] = Value::String(base64::encode_config(buf, base64::URL_SAFE_NO_PAD))
+                    jwk["x"] = Value::String(BASE64_URL_SAFE_NO_PAD.encode(buf))
                 });
 
                 key_pair.with_secret_bytes(|buf| {
                     if let Some(sk) = buf {
-                        jwk["d"] = Value::String(base64::encode_config(sk, base64::URL_SAFE_NO_PAD))
+                        jwk["d"] = Value::String(BASE64_URL_SAFE_NO_PAD.encode(sk))
                     }
                 });
 
@@ -457,8 +467,8 @@ impl AsKnownKeyPair for Secret {
 
                 let curve25519_point_size = 32;
                 let (d_value, x_value) = decoded_value.split_at(curve25519_point_size);
-                let base64_url_d_value = base64::encode_config(&d_value, base64::URL_SAFE_NO_PAD);
-                let base64_url_x_value = base64::encode_config(&x_value, base64::URL_SAFE_NO_PAD);
+                let base64_url_d_value = BASE64_URL_SAFE_NO_PAD.encode(d_value);
+                let base64_url_x_value = BASE64_URL_SAFE_NO_PAD.encode(x_value);
 
                 let jwk = json!({
                     "kty": "OKP",
@@ -493,18 +503,18 @@ pub enum Codec {
 
 impl Codec {
     fn codec_by_prefix(value: u32) -> Result<Codec> {
-        return match value {
+        match value {
             0xEC => Ok(Codec::X25519Pub),
             0xED => Ok(Codec::Ed25519Pub),
             0x1302 => Ok(Codec::X25519Priv),
             0x1300 => Ok(Codec::Ed25519Priv),
             _ => Err(err_msg(ErrorKind::IllegalArgument, "Unsupported prefix")),
-        };
+        }
     }
 }
 
-fn _from_multicodec(value: &Vec<u8>) -> Result<(Codec, &[u8])> {
-    let mut val: Cursor<Vec<u8>> = Cursor::new(value.clone());
+fn _from_multicodec(value: &[u8]) -> Result<(Codec, &[u8])> {
+    let mut val: Cursor<Vec<u8>> = Cursor::new(value.to_owned());
     let prefix_int = val
         .read_unsigned_varint_32()
         .kind(ErrorKind::InvalidState, "Cannot read varint")?;
@@ -515,7 +525,7 @@ fn _from_multicodec(value: &Vec<u8>) -> Result<(Codec, &[u8])> {
         .write_unsigned_varint_32(prefix_int)
         .kind(ErrorKind::InvalidState, "Cannot write varint")?;
 
-    return Ok((codec, value.split_at(prefix.into_inner().len()).1));
+    Ok((codec, value.split_at(prefix.into_inner().len()).1))
 }
 
 #[cfg(test)]
@@ -549,7 +559,7 @@ mod tests {
         }))
         .map(KnownKeyPair::X25519)
         .unwrap();
-        assert_eq!(format!("{:?}", actual_key), format!("{:?}", expected_key));
+        assert_eq!(format!("{actual_key:?}"), format!("{:?}", expected_key));
     }
 
     #[test]
@@ -572,7 +582,7 @@ mod tests {
         }))
         .map(KnownKeyPair::Ed25519)
         .unwrap();
-        assert_eq!(format!("{:?}", actual_key), format!("{:?}", expected_key));
+        assert_eq!(format!("{actual_key:?}"), format!("{:?}", expected_key));
     }
 
     #[test]
@@ -596,7 +606,7 @@ mod tests {
         }))
         .map(KnownKeyPair::X25519)
         .unwrap();
-        assert_eq!(format!("{:?}", actual_key), format!("{:?}", expected_key));
+        assert_eq!(format!("{actual_key:?}"), format!("{:?}", expected_key));
     }
 
     #[test]
@@ -619,7 +629,7 @@ mod tests {
         }))
         .map(KnownKeyPair::Ed25519)
         .unwrap();
-        assert_eq!(format!("{:?}", actual_key), format!("{:?}", expected_key));
+        assert_eq!(format!("{actual_key:?}"), format!("{:?}", expected_key));
     }
 
     #[test]
@@ -642,7 +652,7 @@ mod tests {
         }))
         .map(KnownKeyPair::X25519)
         .unwrap();
-        assert_eq!(format!("{:?}", actual_key), format!("{:?}", expected_key));
+        assert_eq!(format!("{actual_key:?}"), format!("{:?}", expected_key));
     }
 
     #[test]
@@ -665,7 +675,7 @@ mod tests {
         }))
         .map(KnownKeyPair::Ed25519)
         .unwrap();
-        assert_eq!(format!("{:?}", actual_key), format!("{:?}", expected_key));
+        assert_eq!(format!("{actual_key:?}"), format!("{:?}", expected_key));
     }
 
     #[test]
@@ -689,7 +699,7 @@ mod tests {
         }))
         .map(KnownKeyPair::X25519)
         .unwrap();
-        assert_eq!(format!("{:?}", actual_key), format!("{:?}", expected_key));
+        assert_eq!(format!("{actual_key:?}"), format!("{:?}", expected_key));
     }
 
     #[test]
@@ -713,7 +723,7 @@ mod tests {
         }))
         .map(KnownKeyPair::Ed25519)
         .unwrap();
-        assert_eq!(format!("{:?}", actual_key), format!("{:?}", expected_key));
+        assert_eq!(format!("{actual_key:?}"), format!("{:?}", expected_key));
     }
 
     #[test]
@@ -733,11 +743,11 @@ mod tests {
 
     #[test]
     fn is_did_works() {
-        assert_eq!(is_did(""), false);
-        assert_eq!(is_did("did:example:alice"), true);
-        assert_eq!(is_did("did::"), true); //TODO is this ok?
-        assert_eq!(is_did("example:example:alice"), false);
-        assert_eq!(is_did("example:alice"), false);
+        assert!(!is_did(""));
+        assert!(is_did("did:example:alice"));
+        assert!(is_did("did::")); //TODO is this ok?
+        assert!(!is_did("example:example:alice"));
+        assert!(!is_did("example:alice"));
     }
 
     #[test]
@@ -756,7 +766,7 @@ mod tests {
         assert_eq!(expected_serialzied, serialized);
 
         let deserialized: Secret = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(format!("{:?}", deserialized), format!("{:?}", actual_key));
+        assert_eq!(format!("{deserialized:?}"), format!("{:?}", actual_key));
         match deserialized.secret_material {
             SecretMaterial::Base58 {
                 private_key_base58: value,

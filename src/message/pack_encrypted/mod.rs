@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::{
     algorithms::{AnonCryptAlg, AuthCryptAlg},
-    did::DIDResolver,
+    did::{CachingDIDResolver, DIDResolver},
     error::{err_msg, ErrorKind, Result, ResultContext},
     protocols::routing::wrap_in_forward_if_needed,
     secrets::SecretsResolver,
@@ -48,13 +48,13 @@ impl Message {
     /// # Params
     /// - `to` recipient DID or key ID the sender uses encryption.
     /// - `from` a sender DID or key ID. If set message will be repudiable authenticated or anonymous otherwise.
-    ///    Must match `from` header in Plaintext if the header is set.
+    ///   Must match `from` header in Plaintext if the header is set.
     /// - `sign_by` if `Some` message will be additionally signed to provide additional non-repudiable authentication
-    ///    by provided DID/Key. Signed messages are only necessary when the origin of plaintext must be provable
-    ///    to third parties, or when the sender can’t be proven to the recipient by authenticated encryption because
-    ///    the recipient is not known in advance (e.g., in a broadcast scenario).
-    ///    Adding a signature when one is not needed can degrade rather than enhance security because
-    ///    it relinquishes the sender’s ability to speak off the record.
+    ///   by provided DID/Key. Signed messages are only necessary when the origin of plaintext must be provable
+    ///   to third parties, or when the sender can't be proven to the recipient by authenticated encryption because
+    ///   the recipient is not known in advance (e.g., in a broadcast scenario).
+    ///   Adding a signature when one is not needed can degrade rather than enhance security because
+    ///   it relinquishes the sender's ability to speak off the record.
     /// - `did_resolver` instance of `DIDResolver` to resolve DIDs.
     /// - `secrets_resolver` instance of SecretsResolver` to resolve sender DID keys secrets.
     /// - `options` allow fine configuration of packing process and have implemented `Default`.
@@ -84,8 +84,9 @@ impl Message {
         options: &PackEncryptedOptions,
     ) -> Result<(String, PackEncryptedMetadata)> {
         self._validate_pack_encrypted(to, from, sign_by)?;
-        // TODO: Think how to avoid resolving of did multiple times
-        // and perform async operations in parallel
+
+        // Use caching resolver to avoid duplicate DID resolutions
+        let caching_resolver = CachingDIDResolver::new(did_resolver);
 
         // TODO:
         // 1. Extract JWE-related steps to a separate method, so that pack_encrypted uses
@@ -96,14 +97,14 @@ impl Message {
 
         let (msg, sign_by_kid) = if let Some(sign_by) = sign_by {
             let (msg, PackSignedMetadata { sign_by_kid }) = self
-                .pack_signed(sign_by, did_resolver, secrets_resolver)
+                .pack_signed(sign_by, &caching_resolver, secrets_resolver)
                 .await
                 .context("Unable produce sign envelope")?;
 
             (msg, Some(sign_by_kid))
         } else {
             let msg = self
-                .pack_plaintext(did_resolver)
+                .pack_plaintext(&caching_resolver)
                 .await
                 .context("Unable produce plaintext")?;
             (msg, None)
@@ -113,7 +114,7 @@ impl Message {
             let (msg, from_kid, to_kids) = authcrypt(
                 to,
                 from,
-                did_resolver,
+                &caching_resolver,
                 secrets_resolver,
                 msg.as_bytes(),
                 &options.enc_alg_auth,
@@ -125,13 +126,13 @@ impl Message {
             (msg, Some(from_kid), to_kids)
         } else {
             let (msg, to_kids) =
-                anoncrypt(to, did_resolver, msg.as_bytes(), &options.enc_alg_anon).await?;
+                anoncrypt(to, &caching_resolver, msg.as_bytes(), &options.enc_alg_anon).await?;
 
             (msg, None, to_kids)
         };
 
         let (msg, messaging_service) =
-            match wrap_in_forward_if_needed(&msg, to, did_resolver, options).await? {
+            match wrap_in_forward_if_needed(&msg, to, &caching_resolver, options).await? {
                 Some((forward_msg, messaging_service)) => (forward_msg, Some(messaging_service)),
                 None => (msg, None),
             };
@@ -188,7 +189,7 @@ impl Message {
         }
 
         match (from, &self.from) {
-            (Some(ref from), Some(ref sfrom)) if did_or_url(from).0 != sfrom => Err(err_msg(
+            (Some(from), Some(ref sfrom)) if did_or_url(from).0 != sfrom => Err(err_msg(
                 ErrorKind::IllegalArgument,
                 "`message.from` value is not equal to `from` value's DID",
             ))?,
@@ -274,6 +275,7 @@ pub struct MessagingServiceMetadata {
 
 #[cfg(test)]
 mod tests {
+    use base64::prelude::*;
     use std::borrow::Cow;
     use std::{collections::HashMap, iter::FromIterator};
 
@@ -2133,8 +2135,8 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::IllegalArgument);
 
         assert_eq!(
-            format!("{}", err),
-            "Illegal argument: `from` value is not a valid DID or DID URL"
+            format!("{err}"),
+            "Illegal argument provided: `from` value is not a valid DID or DID URL"
         );
     }
 
@@ -2147,7 +2149,7 @@ mod tests {
 
         let res = MESSAGE_SIMPLE
             .pack_encrypted(
-                "not-a-did".into(),
+                "not-a-did",
                 None,
                 None,
                 &did_resolver,
@@ -2163,8 +2165,8 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::IllegalArgument);
 
         assert_eq!(
-            format!("{}", err),
-            "Illegal argument: `to` value is not a valid DID or DID URL"
+            format!("{err}"),
+            "Illegal argument provided: `to` value is not a valid DID or DID URL"
         );
     }
 
@@ -2193,8 +2195,8 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::IllegalArgument);
 
         assert_eq!(
-            format!("{}", err),
-            "Illegal argument: `sign_from` value is not a valid DID or DID URL"
+            format!("{err}"),
+            "Illegal argument provided: `sign_from` value is not a valid DID or DID URL"
         );
     }
 
@@ -2225,8 +2227,8 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::IllegalArgument);
 
         assert_eq!(
-            format!("{}", err),
-            "Illegal argument: `message.from` value is not equal to `from` value's DID"
+            format!("{err}"),
+            "Illegal argument provided: `message.from` value is not equal to `from` value's DID"
         );
     }
 
@@ -2257,8 +2259,8 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::IllegalArgument);
 
         assert_eq!(
-            format!("{}", err),
-            "Illegal argument: `message.to` value does not contain `to` value's DID"
+            format!("{err}"),
+            "Illegal argument provided: `message.to` value does not contain `to` value's DID"
         );
     }
 
@@ -2313,8 +2315,8 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::IllegalArgument);
 
         assert_eq!(
-            format!("{}", err),
-            "Illegal argument: `from` value is not a valid DID or DID URL"
+            format!("{err}"),
+            "Illegal argument provided: `from` value is not a valid DID or DID URL"
         );
     }
 
@@ -2329,7 +2331,7 @@ mod tests {
         msg.to = Some(vec!["not-a-did".to_string()]);
         let res = msg
             .pack_encrypted(
-                "not-a-did".into(),
+                "not-a-did",
                 ALICE_DID.into(),
                 None,
                 &did_resolver,
@@ -2345,8 +2347,8 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::IllegalArgument);
 
         assert_eq!(
-            format!("{}", err),
-            "Illegal argument: `to` value is not a valid DID or DID URL"
+            format!("{err}"),
+            "Illegal argument provided: `to` value is not a valid DID or DID URL"
         );
     }
 
@@ -2383,7 +2385,7 @@ mod tests {
         msg.to = Some(vec![ALICE_DID.to_string(), BOB_DID.to_string()]);
         let _ = msg
             .pack_encrypted(
-                "did:example:bob#key-x25519-1".into(),
+                "did:example:bob#key-x25519-1",
                 None,
                 None,
                 &did_resolver,
@@ -2446,8 +2448,8 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::IllegalArgument);
 
         assert_eq!(
-            format!("{}", err),
-            "Illegal argument: `message.from` value is not equal to `from` value's DID"
+            format!("{err}"),
+            "Illegal argument provided: `message.from` value is not equal to `from` value's DID"
         );
     }
 
@@ -2478,8 +2480,8 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::IllegalArgument);
 
         assert_eq!(
-            format!("{}", err),
-            "Illegal argument: `message.to` value does not contain `to` value's DID"
+            format!("{err}"),
+            "Illegal argument provided: `message.to` value does not contain `to` value's DID"
         );
     }
 
@@ -2509,7 +2511,7 @@ mod tests {
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::DIDNotResolved);
 
-        assert_eq!(format!("{}", err), "DID not resolved: Sender did not found");
+        assert_eq!(format!("{err}"), "DID not resolved: Sender did not found");
     }
 
     #[tokio::test]
@@ -2538,7 +2540,7 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::DIDUrlNotFound);
 
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "DID URL not found: No sender key agreements found"
         );
     }
@@ -2570,7 +2572,7 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::DIDNotResolved);
 
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "DID not resolved: Recipient did not found"
         );
     }
@@ -2601,7 +2603,7 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::DIDUrlNotFound);
 
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "DID URL not found: No recipient key agreements found"
         );
     }
@@ -2632,7 +2634,7 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::DIDUrlNotFound);
 
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "DID URL not found: Unable produce sign envelope: Signer key id not found in did doc"
         );
     }
@@ -2662,7 +2664,7 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::SecretNotFound);
 
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "Secret not found: No sender secrets found"
         );
     }
@@ -2694,7 +2696,7 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::SecretNotFound);
 
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "Secret not found: Unable produce sign envelope: No signer secrets found"
         );
     }
@@ -2779,8 +2781,8 @@ mod tests {
             assert_eq!(err.kind(), ErrorKind::NoCompatibleCrypto);
 
             assert_eq!(
-                format!("{}", err),
-                "No compatible crypto: No common keys between sender and recipient found"
+                format!("{err}"),
+                "No compatible cryptographic algorithms found: No common keys between sender and recipient found"
             );
         }
     }
@@ -2803,10 +2805,10 @@ mod tests {
                 None,
                 &did_resolver,
                 &charlie_rotated_to_alice_secrets_resolver,
-                &&PackEncryptedOptions {
+                (&PackEncryptedOptions {
                     forward: false,
                     ..PackEncryptedOptions::default()
-                },
+                }),
             )
             .await
             .expect("Unable pack_encrypted");
@@ -2962,7 +2964,7 @@ mod tests {
         alg: jws::Algorithm,
     ) -> String {
         let mut buf = vec![];
-        let msg = jws::parse(&msg, &mut buf).expect("Unable parse");
+        let msg = jws::parse(msg, &mut buf).expect("Unable parse");
 
         assert_eq!(
             msg.protected,
@@ -2991,7 +2993,8 @@ mod tests {
         let valid = msg.verify((sign_key_id, &sign_key)).expect("Unable verify");
         assert!(valid);
 
-        let payload = base64::decode_config(msg.jws.payload, base64::URL_SAFE_NO_PAD)
+        let payload = BASE64_URL_SAFE_NO_PAD
+            .decode(msg.jws.payload)
             .expect("Unable decode_config");
 
         String::from_utf8(payload).expect("Unable from_utf8")

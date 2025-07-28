@@ -1,4 +1,5 @@
 use askar_crypto::sign::KeySign;
+use base64::prelude::*;
 use std::borrow::Cow;
 
 use crate::{
@@ -24,22 +25,22 @@ pub(crate) fn sign<Key: KeySign>(
         let protected = serde_json::to_string(&protected)
             .kind(ErrorKind::InvalidState, "Unable serialize protected header")?;
 
-        base64::encode_config(protected, base64::URL_SAFE_NO_PAD)
+        BASE64_URL_SAFE_NO_PAD.encode(protected)
     };
 
-    let payload = base64::encode_config(payload, base64::URL_SAFE_NO_PAD);
+    let payload = BASE64_URL_SAFE_NO_PAD.encode(payload);
 
     let signature = {
         // JWS Signing Input
         // The input to the digital signature or MAC computation.  Its value
         // is ASCII(BASE64URL(UTF8(JWS Protected Header)) || '.' || BASE64URL(JWS Payload)).
-        let sign_input = format!("{}.{}", protected, payload);
+        let sign_input = format!("{protected}.{payload}");
 
         let signature = key
             .create_signature(sign_input.as_bytes(), Some(sig_type))
             .kind(ErrorKind::InvalidState, "Unable create signature")?;
 
-        base64::encode_config(&signature, base64::URL_SAFE_NO_PAD)
+        BASE64_URL_SAFE_NO_PAD.encode(&signature)
     };
 
     let signature = Signature {
@@ -74,25 +75,25 @@ pub(crate) fn sign_compact<Key: KeySign>(
         let header = serde_json::to_string(&header)
             .kind(ErrorKind::InvalidState, "Unable serialize header")?;
 
-        base64::encode_config(header, base64::URL_SAFE_NO_PAD)
+        BASE64_URL_SAFE_NO_PAD.encode(header)
     };
 
-    let payload = base64::encode_config(payload, base64::URL_SAFE_NO_PAD);
+    let payload = BASE64_URL_SAFE_NO_PAD.encode(payload);
 
     let signature = {
         // JWS Signing Input
         // The input to the digital signature or MAC computation.  Its value
         // is ASCII(BASE64URL(UTF8(JWS Protected Header)) || '.' || BASE64URL(JWS Payload)).
-        let sign_input = format!("{}.{}", header, payload);
+        let sign_input = format!("{header}.{payload}");
 
         let signature = key
             .create_signature(sign_input.as_bytes(), Some(sig_type))
             .kind(ErrorKind::InvalidState, "Unable create signature")?;
 
-        base64::encode_config(&signature, base64::URL_SAFE_NO_PAD)
+        BASE64_URL_SAFE_NO_PAD.encode(&signature)
     };
 
-    let compact_jws = format!("{}.{}.{}", header, payload, signature);
+    let compact_jws = format!("{header}.{payload}.{signature}");
 
     Ok(compact_jws)
 }
@@ -104,6 +105,7 @@ mod tests {
         jwk::FromJwk,
         sign::{KeySigVerify, KeySign},
     };
+    use base64::prelude::*;
 
     use crate::{
         error::{ErrorKind, Result},
@@ -150,10 +152,7 @@ mod tests {
             let mut buf = vec![];
             let msg = jws::parse(&msg, &mut buf).expect("Unable parse");
 
-            assert_eq!(
-                msg.jws.payload,
-                base64::encode_config(payload, base64::URL_SAFE_NO_PAD)
-            );
+            assert_eq!(msg.jws.payload, BASE64_URL_SAFE_NO_PAD.encode(payload));
 
             assert_eq!(msg.jws.signatures.len(), 1);
             assert_eq!(msg.jws.signatures[0].header.kid, kid);
@@ -239,8 +238,8 @@ mod tests {
             assert_eq!(err.kind(), ErrorKind::InvalidState);
 
             assert_eq!(
-                format!("{}", err),
-                "Invalid state: Unable create signature: Unsupported signature type"
+                format!("{err}"),
+                "Invalid system state: Unable create signature: Unsupported signature type"
             );
         }
     }
@@ -280,8 +279,8 @@ mod tests {
             assert_eq!(err.kind(), ErrorKind::Unsupported);
 
             assert_eq!(
-                format!("{}", err),
-                "Unsupported crypto or method: Unsupported signature type"
+                format!("{err}"),
+                "Unsupported cryptographic algorithm or method: Unsupported signature type"
             );
         }
     }
@@ -330,10 +329,7 @@ mod tests {
             let mut buf = vec![];
             let msg = jws::parse_compact(&msg, &mut buf).expect("Unable parse_compact");
 
-            assert_eq!(
-                msg.payload,
-                base64::encode_config(payload, base64::URL_SAFE_NO_PAD)
-            );
+            assert_eq!(msg.payload, BASE64_URL_SAFE_NO_PAD.encode(payload));
 
             assert_eq!(msg.parsed_header.typ, typ);
             assert_eq!(msg.parsed_header.alg, alg);
@@ -425,8 +421,8 @@ mod tests {
             assert_eq!(err.kind(), ErrorKind::InvalidState);
 
             assert_eq!(
-                format!("{}", err),
-                "Invalid state: Unable create signature: Unsupported signature type"
+                format!("{err}"),
+                "Invalid system state: Unable create signature: Unsupported signature type"
             );
         }
     }
@@ -470,8 +466,8 @@ mod tests {
             assert_eq!(err.kind(), ErrorKind::Unsupported);
 
             assert_eq!(
-                format!("{}", err),
-                "Unsupported crypto or method: Unsupported signature type"
+                format!("{err}"),
+                "Unsupported cryptographic algorithm or method: Unsupported signature type"
             );
         }
     }
@@ -483,7 +479,7 @@ mod tests {
         payload: &str,
     ) -> Result<String> {
         let key = K::from_jwk(key).expect("Unable from_jwk");
-        jws::sign(payload.as_bytes(), (&kid, &key), alg.clone())
+        jws::sign(payload.as_bytes(), (kid, &key), alg.clone())
     }
 
     fn _sign_compact<K: FromJwk + KeySign>(
@@ -494,7 +490,7 @@ mod tests {
         payload: &str,
     ) -> Result<String> {
         let key = K::from_jwk(key).expect("Unable from_jwk");
-        jws::sign_compact(payload.as_bytes(), (&kid, &key), typ, alg.clone())
+        jws::sign_compact(payload.as_bytes(), (kid, &key), typ, alg.clone())
     }
 
     const ALICE_KID_ED25519: &str = "did:example:alice#key-1";
@@ -552,7 +548,7 @@ mod tests {
     const ALICE_PKEY_K256: &str = r#"
     {
         "kty":"EC",
-        "d":"N3Hm1LXA210YVGGsXw_GklMwcLu_bMgnzDese6YQIyA",
+        "crv":"secp256k1",
         "x":"aToW5EaTq5mlAf8C5ECYDSkqsJycrW-e1SQ6_GJcAOk",
         "y":"JAGX94caA21WKreXwYUaOCYTBMrqaX4KWIlsQZTHWCk"
     }

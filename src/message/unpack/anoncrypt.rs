@@ -50,12 +50,12 @@ pub(crate) async fn _try_unpack_anoncrypt<'sr>(
 
     let to_kid = to_kids
         .first()
-        .map(|&k| k)
+        .copied()
         .ok_or_else(|| err_msg(ErrorKind::Malformed, "No recipient keys found"))?;
 
     let (to_did, _) = did_or_url(to_kid);
 
-    if let Some(_) = to_kids.iter().find(|k| {
+    if to_kids.iter().any(|k| {
         let (k_did, k_url) = did_or_url(k);
         (k_did != to_did) || (k_url.is_none())
     }) {

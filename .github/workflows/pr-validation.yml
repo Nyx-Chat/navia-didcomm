@@ -1,0 +1,140 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Quick checks that should fail fast
+  quick-checks:
+    name: Quick Checks
+    runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-x64
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Check formatting
+        run: cargo fmt -- --check
+      
+      - name: Check compilation
+        run: cargo check --all-features
+      
+      - name: Run clippy
+        run: cargo clippy --all-features -- -D warnings
+
+  # Rust tests - comprehensive testing
+  rust-tests:
+    name: Rust Tests
+    runs-on: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64
+    needs: quick-checks
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Run unit tests
+        run: cargo test --lib --all-features
+      
+      - name: Run integration tests
+        run: cargo test --test integration_tests --all-features
+        
+      - name: Run error diagnostics tests
+        run: cargo test --test error_diagnostics_tests --all-features
+      
+      - name: Run doc tests
+        run: cargo test --doc --all-features
+        
+      - name: Run benchmarks (check only)
+        run: cargo bench --no-run
+
+  # Additional testing (matching navia patterns)
+  additional-tests:
+    name: Additional Tests
+    runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-x64
+    needs: quick-checks
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Cache cargo  
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-additional-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Build with all features
+        run: cargo build --all-features
+        
+      - name: Test with all features
+        run: cargo test --all-features
+
+  # Security and quality checks
+  security-checks:
+    name: Security Checks
+    runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-x64
+    needs: quick-checks
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+      
+      - name: Run security audit
+        run: cargo audit
+      
+      - name: Check documentation
+        run: cargo doc --no-deps --all-features --document-private-items
+        
+      - name: Run benchmarks for performance regression detection
+        run: cargo bench --message-format json | tee benchmark-results.json || true
+        
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.event.number || 'main' }}
+          path: benchmark-results.json
+          if-no-files-found: ignore

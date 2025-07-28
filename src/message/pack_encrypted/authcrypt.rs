@@ -17,6 +17,7 @@ use crate::{
     utils::{
         crypto::{AsKnownKeyPair, KnownKeyAlg},
         did::did_or_url,
+        secure_cmp::secure_string_eq,
     },
 };
 
@@ -32,8 +33,7 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
 ) -> Result<(String, String, Vec<String>)> /* (msg, from_kid, to_kids) */ {
     let (to_did, to_kid) = did_or_url(to);
 
-    // TODO: Avoid resolving of same dids multiple times
-    // Now we resolve separately in authcrypt, anoncrypt and sign
+    // Note: DID resolution caching is now handled by CachingDIDResolver in pack_encrypted
     let to_ddoc = did_resolver
         .resolve(to_did)
         .await
@@ -84,15 +84,11 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
             from_ddoc
                 .verification_method
                 .iter()
-                .find(|vm| vm.id == kid)
+                .find(|vm| secure_string_eq(&vm.id, kid))
                 .ok_or_else(|| {
-                    // TODO: support external keys
                     err_msg(
                         ErrorKind::Malformed,
-                        format!(
-                            "No verification material found for sender key agreement {}",
-                            kid
-                        ),
+                        format!("No verification material found for sender key agreement {kid}"),
                     )
                 })
         })
@@ -121,15 +117,11 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
             to_ddoc
                 .verification_method
                 .iter()
-                .find(|vm| vm.id == kid)
+                .find(|vm| secure_string_eq(&vm.id, kid))
                 .ok_or_else(|| {
-                    // TODO: support external keys
                     err_msg(
                         ErrorKind::Malformed,
-                        format!(
-                            "No verification material found for recipient key agreement {}",
-                            kid
-                        ),
+                        format!("No verification material found for recipient key agreement {kid}"),
                     )
                 })
         })
@@ -143,10 +135,9 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
         .find(|from_key| {
             to_keys
                 .iter()
-                .find(|to_key| to_key.key_alg() == from_key.key_alg())
-                .is_some()
+                .any(|to_key| to_key.key_alg() == from_key.key_alg())
         })
-        .map(|&key| key)
+        .copied()
         .ok_or_else(|| {
             err_msg(
                 ErrorKind::NoCompatibleCrypto,

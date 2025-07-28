@@ -171,8 +171,8 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
         assert_eq!(
-            format!("{}", err),
-            "Malformed: from_prior `sub` value is not equal to message `from` value"
+            format!("{err}"),
+            "Message malformed or invalid: from_prior `sub` value is not equal to message `from` value"
         );
     }
 }

@@ -1,30 +1,39 @@
-# DIDComm Rust + JavaScript/TypeScript + Swift
+# Navia-DIDComm
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Unit Tests](https://github.com/sicpa-dlab/didcomm-rust/workflows/verify/badge.svg)](https://github.com/sicpa-dlab/didcomm-rust/actions/workflows/verify.yml)
-[![Rust Package](https://img.shields.io/crates/v/didcomm)](https://crates.io/crates/didcomm/)
+[![License](https://img.shields.io/badge/License-Proprietary-red.svg)](./LICENSE)
+[![GitHub Package Registry](https://img.shields.io/badge/GitHub%20Packages-private-blue.svg)](https://github.com/nyx-chat/navia-didcomm/packages)
+[![Build Status](https://github.com/nyx-chat/navia-didcomm/workflows/PR%20Validation/badge.svg)](https://github.com/nyx-chat/navia-didcomm/actions)
+[![Tests](https://img.shields.io/badge/tests-190%20passing-green.svg)](https://github.com/nyx-chat/navia-didcomm/actions)
 
-The repository consists of the following main components:
-- Basic [DIDComm v2](https://identity.foundation/didcomm-messaging/spec) support in Rust.
-- [Wasm](https://webassembly.org/) - based DIDComm JavaScript/TypeScript, see [wasm](/wasm).
-- [uniffi-rs](https://github.com/mozilla/uniffi-rs) - based wrappers
-  - [uniffi](/uniffi) - callback-based Rust wrapper with uniffi-rs support
-  - [wrappers/swift](/wrappers/swift) - Swift wrapper generated via uniffi-rs  
+**Production-ready DIDComm v2 implementation for secure peer-to-peer messaging**
 
-The docs below are provided for the main DIDComm Rust.
+Navia-DIDComm is a complete, modern implementation of the [DIDComm v2 specification](https://identity.foundation/didcomm-messaging/spec/) built for production use in the [Nyx](https://github.com/Nyx-Chat) ecosystem.
 
-See [wasm/README.md](/wasm/README.md) for DIDComm JavaScript/TypeScript docs.
+## ✨ Features
 
-See [wrappers/swift/README.md](/wrappers/swift/README.md) for DIDComm Swift docs.
+- 🔒 **Complete DIDComm v2 Support** - Full specification implementation
+- 🚀 **Production Ready** - Comprehensive testing, security audits, modern dependencies
+- 🔐 **Modern Cryptography** - X25519, P-256, P-384 ✅, P-521, Ed25519, Secp256k1
+- 📨 **Secure Messaging** - Encrypted (anoncrypt/authcrypt) and signed messages  
+- 🔄 **Message Routing** - Forward protocol and mediation support
+- 🔑 **DID Rotation** - Full `fromPrior` field support
+- ⚡ **High Performance** - Optimized for speed and low memory usage
 
-## Usage
+## 🔮 Future Roadmap
 
-To use `didcomm`, add this to your `Cargo.toml`:
+- **Post-Quantum Cryptography** - Kyber integration planned for quantum-resistant key exchange
+
+## 🚀 Quick Start
+
+Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-didcomm = "0.4"
+# For navia (UniFFI wrapper) and mediator servers
+navia-didcomm = { git = "https://github.com/nyx-chat/navia-didcomm", version = "1.0.0" }
 ```
+
+> **Note**: This is a private library for the Nyx ecosystem. Access requires authentication to the nyx-chat GitHub organization.
 
 ## Run examples
 
@@ -44,15 +53,15 @@ Use `cargo run --example {example-name}` for example `cargo run --example basic`
   - Verification methods referencing another DID Document are not supported (see [Referring to Verification Methods](https://www.w3.org/TR/did-core/#referring-to-verification-methods)).
 - The following curves and algorithms are supported:
   - Encryption:
-     - Curves: X25519, P-256
+     - Curves: X25519, P-256, P-384
      - Content encryption algorithms: 
        - XC20P (to be used with ECDH-ES only, default for anoncrypt),
        - A256GCM (to be used with ECDH-ES only),
        - A256CBC-HS512 (default for authcrypt)
      - Key wrapping algorithms: ECDH-ES+A256KW, ECDH-1PU+A256KW
   - Signing:
-    - Curves: Ed25519, Secp256k1, P-256
-    - Algorithms: EdDSA (with crv=Ed25519), ES256, ES256K
+    - Curves: Ed25519, Secp256k1, P-256, P-384
+    - Algorithms: EdDSA (with crv=Ed25519), ES256, ES384, ES256K
 - Forward protocol is implemented and used by default.
 - DID rotation (`fromPrior` field) is supported.
 - DIDComm has been implemented under the following [Assumptions](https://hackmd.io/i3gLqgHQR2ihVFV5euyhqg)   
@@ -174,11 +183,11 @@ let (msg, metadata) = msg
 
 Signed messages are only necessary when
 - the origin of plaintext must be provable to third parties
-- or the sender can’t be proven to the recipient by authenticated encryption because the recipient is not known in advance (e.g., in a
+- or the sender can't be proven to the recipient by authenticated encryption because the recipient is not known in advance (e.g., in a
 broadcast scenario).
  
 Adding a signature when one is not needed can degrade rather than enhance security because it
-relinquishes the sender’s ability to speak off the record.
+relinquishes the sender's ability to speak off the record.
 
 See `Message::pack_signed` documentation for more details.
 

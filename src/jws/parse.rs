@@ -3,6 +3,7 @@ use crate::{
     error::{err_msg, ErrorKind, Result, ResultExt},
     jws::envelope::{CompactHeader, ProtectedHeader, JWS},
 };
+use base64::prelude::*;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct ParsedJWS<'a, 'b> {
@@ -15,14 +16,14 @@ pub(crate) fn parse<'a, 'b>(jws: &'a str, buf: &'b mut Vec<Vec<u8>>) -> Result<P
 }
 
 impl<'a> JWS<'a> {
-    pub(crate) fn from_str(s: &str) -> Result<JWS> {
+    pub(crate) fn from_str(s: &str) -> Result<JWS<'_>> {
         serde_json::from_str(s).to_didcomm("Unable parse jws")
     }
 
     pub(crate) fn parse<'b>(self, buf: &'b mut Vec<Vec<u8>>) -> Result<ParsedJWS<'a, 'b>> {
         let protected = {
             let len = self.signatures.len();
-            let mut protected = Vec::<ProtectedHeader>::with_capacity(len);
+            let mut protected = Vec::<ProtectedHeader<'_>>::with_capacity(len);
             buf.resize(len, vec![]);
 
             for (i, b) in buf.iter_mut().enumerate() {
@@ -31,10 +32,13 @@ impl<'a> JWS<'a> {
                     .get(i)
                     .ok_or_else(|| err_msg(ErrorKind::InvalidState, "Invalid signature index"))?;
 
-                base64::decode_config_buf(signature.protected, base64::URL_SAFE_NO_PAD, b)
+                let decoded = BASE64_URL_SAFE_NO_PAD
+                    .decode(signature.protected)
                     .kind(ErrorKind::Malformed, "Unable decode protected header")?;
+                b.clear();
+                b.extend_from_slice(&decoded);
 
-                let p: ProtectedHeader =
+                let p: ProtectedHeader<'_> =
                     serde_json::from_slice(b).to_didcomm("Unable parse protected header")?;
 
                 protected.push(p);
@@ -74,10 +78,13 @@ pub(crate) fn parse_compact<'a>(
     let payload = segments[1];
     let signature = segments[2];
 
-    base64::decode_config_buf(header, base64::URL_SAFE_NO_PAD, buf)
+    let decoded = BASE64_URL_SAFE_NO_PAD
+        .decode(header)
         .kind(ErrorKind::Malformed, "Unable decode header")?;
+    buf.clear();
+    buf.extend_from_slice(&decoded);
 
-    let parsed_header: CompactHeader =
+    let parsed_header: CompactHeader<'_> =
         serde_json::from_slice(buf).kind(ErrorKind::Malformed, "Unable parse header")?;
 
     Ok(ParsedCompactJWS {
@@ -119,7 +126,7 @@ mod tests {
         "#;
 
         let mut buf = vec![];
-        let res = jws::parse(&msg, &mut buf);
+        let res = jws::parse(msg, &mut buf);
         let res = res.expect("res is err");
 
         let exp = ParsedJWS {
@@ -159,7 +166,7 @@ mod tests {
         "#;
 
         let mut buf = vec![];
-        let res = jws::parse(&msg, &mut buf);
+        let res = jws::parse(msg, &mut buf);
         let res = res.expect("res is err");
 
         let exp = ParsedJWS {
@@ -198,7 +205,7 @@ mod tests {
         "#;
 
         let mut buf = vec![];
-        let res = jws::parse(&msg, &mut buf);
+        let res = jws::parse(msg, &mut buf);
         let res = res.expect("res is err");
 
         let exp = ParsedJWS {
@@ -244,7 +251,7 @@ mod tests {
         "#;
 
         let mut buf = vec![];
-        let res = jws::parse(&msg, &mut buf);
+        let res = jws::parse(msg, &mut buf);
         let res = res.expect("res is err");
 
         let exp = ParsedJWS {
@@ -296,14 +303,14 @@ mod tests {
         "#;
 
         let mut buf = vec![];
-        let res = jws::parse(&msg, &mut buf);
+        let res = jws::parse(msg, &mut buf);
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
         assert_eq!(
-            format!("{}", err),
-            "Malformed: Unable parse jws: trailing comma at line 10 column 19"
+            format!("{err}"),
+            "Message malformed or invalid: Unable parse jws: trailing comma at line 10 column 19"
         );
     }
 
@@ -324,14 +331,14 @@ mod tests {
         "#;
 
         let mut buf = vec![];
-        let res = jws::parse(&msg, &mut buf);
+        let res = jws::parse(msg, &mut buf);
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
         assert_eq!(
-            format!("{}", err),
-            "Malformed: Unable parse jws: missing field `kid` at line 9 column 17"
+            format!("{err}"),
+            "Message malformed or invalid: Unable parse jws: missing field `kid` at line 9 column 17"
         );
     }
 
@@ -353,14 +360,14 @@ mod tests {
         "#;
 
         let mut buf = vec![];
-        let res = jws::parse(&msg, &mut buf);
+        let res = jws::parse(msg, &mut buf);
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
         assert_eq!(
-            format!("{}", err),
-            "Malformed: Unable decode protected header: Invalid byte 33, offset 0."
+            format!("{err}"),
+            "Message malformed or invalid: Unable decode protected header: Invalid symbol 33, offset 0."
         );
     }
 
@@ -382,14 +389,14 @@ mod tests {
         "#;
 
         let mut buf = vec![];
-        let res = jws::parse(&msg, &mut buf);
+        let res = jws::parse(msg, &mut buf);
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
         assert_eq!(
-            format!("{}", err),
-            "Malformed: Unable parse protected header: key must be a string at line 1 column 2"
+            format!("{err}"),
+            "Message malformed or invalid: Unable parse protected header: key must be a string at line 1 column 2"
         );
     }
 
@@ -411,14 +418,14 @@ mod tests {
         "#;
 
         let mut buf = vec![];
-        let res = jws::parse(&msg, &mut buf);
+        let res = jws::parse(msg, &mut buf);
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
         assert_eq!(
-            format!("{}", err),
-            "Malformed: Unable parse protected header: missing field `alg` at line 1 column 41"
+            format!("{err}"),
+            "Message malformed or invalid: Unable parse protected header: missing field `alg` at line 1 column 41"
         );
     }
 
@@ -438,7 +445,7 @@ mod tests {
              bHgtCg";
 
         let mut buf = vec![];
-        let res = jws::parse_compact(&msg, &mut buf);
+        let res = jws::parse_compact(msg, &mut buf);
         let res = res.expect("res is err");
 
         let exp = ParsedCompactJWS {
@@ -477,7 +484,7 @@ mod tests {
              bHgtCg";
 
         let mut buf = vec![];
-        let res = jws::parse_compact(&msg, &mut buf);
+        let res = jws::parse_compact(msg, &mut buf);
         let res = res.expect("res is err");
 
         let exp = ParsedCompactJWS {
@@ -513,14 +520,14 @@ mod tests {
              YWdlc3BlY2lmaWNhdHRyaWJ1dGUiOiJhbmQgaXRzIHZhbHVlIn19";
 
         let mut buf = vec![];
-        let res = jws::parse_compact(&msg, &mut buf);
+        let res = jws::parse_compact(msg, &mut buf);
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
         assert_eq!(
-            format!("{}", err),
-            "Malformed: Unable to parse compactly serialized JWS"
+            format!("{err}"),
+            "Message malformed or invalid: Unable to parse compactly serialized JWS"
         );
     }
 
@@ -543,14 +550,14 @@ mod tests {
              ZSNrZXktMSJ9";
 
         let mut buf = vec![];
-        let res = jws::parse_compact(&msg, &mut buf);
+        let res = jws::parse_compact(msg, &mut buf);
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
         assert_eq!(
-            format!("{}", err),
-            "Malformed: Unable to parse compactly serialized JWS"
+            format!("{err}"),
+            "Message malformed or invalid: Unable to parse compactly serialized JWS"
         );
     }
 
@@ -570,14 +577,14 @@ mod tests {
              bHgtCg";
 
         let mut buf = vec![];
-        let res = jws::parse_compact(&msg, &mut buf);
+        let res = jws::parse_compact(msg, &mut buf);
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
         assert_eq!(
-            format!("{}", err),
-            "Malformed: Unable decode header: Encoded text cannot have a 6-bit remainder."
+            format!("{err}"),
+            "Message malformed or invalid: Unable decode header: Invalid symbol 33, offset 0."
         );
     }
 
@@ -597,14 +604,14 @@ mod tests {
              bHgtCg";
 
         let mut buf = vec![];
-        let res = jws::parse_compact(&msg, &mut buf);
+        let res = jws::parse_compact(msg, &mut buf);
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
         assert_eq!(
-            format!("{}", err),
-            "Malformed: Unable parse header: key must be a string at line 1 column 2"
+            format!("{err}"),
+            "Message malformed or invalid: Unable parse header: key must be a string at line 1 column 2"
         );
     }
 
@@ -622,14 +629,14 @@ mod tests {
              bHgtCg";
 
         let mut buf = vec![];
-        let res = jws::parse_compact(&msg, &mut buf);
+        let res = jws::parse_compact(msg, &mut buf);
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
         assert_eq!(
-            format!("{}", err),
-            "Malformed: Unable parse header: missing field `alg` at line 1 column 55"
+            format!("{err}"),
+            "Message malformed or invalid: Unable parse header: missing field `alg` at line 1 column 55"
         );
     }
 }

@@ -31,10 +31,7 @@ Cargo.lock
 # Mac OS X Finder
 .DS_Store
 
-# Xcode
-xcuserdata/
-project.xcworkspace/
-DerivedData/
-
-# Cocoapods
-Pods/
+# Android/Rust specific build artifacts
+*.so
+*.dylib
+*.dll

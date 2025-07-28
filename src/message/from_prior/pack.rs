@@ -63,7 +63,7 @@ impl FromPrior {
                 )
             })?;
 
-            if did != &self.iss {
+            if did != self.iss {
                 Err(err_msg(
                     ErrorKind::IllegalArgument,
                     "from_prior issuer kid does not belong to from_prior `iss`",
@@ -90,7 +90,7 @@ impl FromPrior {
             .find_secrets(&authentication_kids)
             .await
             .context("Unable to find secrets")?
-            .get(0)
+            .first()
             .ok_or_else(|| {
                 err_msg(
                     ErrorKind::SecretNotFound,
@@ -154,7 +154,7 @@ impl FromPrior {
             ))?;
         }
 
-        if &self.iss == &self.sub {
+        if self.iss == self.sub {
             Err(err_msg(
                 ErrorKind::Malformed,
                 "from_prior `iss` and `sub` values must not be equal",
@@ -171,7 +171,7 @@ impl FromPrior {
                 ))?;
             };
 
-            if did != &self.iss {
+            if did != self.iss {
                 Err(err_msg(
                     ErrorKind::IllegalArgument,
                     "from_prior issuer kid does not belong to from_prior `iss`",
@@ -272,7 +272,7 @@ mod tests {
             &FROM_PRIOR_FULL,
             &ALICE_SECRET_AUTH_KEY_ED25519.id,
             ErrorKind::IllegalArgument,
-            "Illegal argument: from_prior issuer kid does not belong to from_prior `iss`",
+            "Illegal argument provided: from_prior issuer kid does not belong to from_prior `iss`",
         )
         .await;
 
@@ -280,7 +280,7 @@ mod tests {
             &FROM_PRIOR_FULL,
             ALICE_DID,
             ErrorKind::IllegalArgument,
-            "Illegal argument: issuer_kid content is not DID URL",
+            "Illegal argument provided: issuer_kid content is not DID URL",
         )
         .await;
 
@@ -288,7 +288,7 @@ mod tests {
             &FROM_PRIOR_FULL,
             "invalid",
             ErrorKind::IllegalArgument,
-            "Illegal argument: issuer_kid content is not DID URL",
+            "Illegal argument provided: issuer_kid content is not DID URL",
         )
         .await;
 
@@ -308,7 +308,7 @@ mod tests {
                 .expect_err("res is ok");
 
             assert_eq!(err.kind(), err_kind);
-            assert_eq!(format!("{}", err), err_mgs);
+            assert_eq!(format!("{err}"), err_mgs);
         }
     }
 
@@ -317,35 +317,35 @@ mod tests {
         _from_prior_pack_works_invalid(
             &FROM_PRIOR_INVALID_ISS,
             ErrorKind::Malformed,
-            "Malformed: from_prior `iss` must be a non-fragment DID",
+            "Message malformed or invalid: from_prior `iss` must be a non-fragment DID",
         )
         .await;
 
         _from_prior_pack_works_invalid(
             &FROM_PRIOR_INVALID_ISS_DID_URL,
             ErrorKind::Malformed,
-            "Malformed: from_prior `iss` must be a non-fragment DID",
+            "Message malformed or invalid: from_prior `iss` must be a non-fragment DID",
         )
         .await;
 
         _from_prior_pack_works_invalid(
             &FROM_PRIOR_INVALID_SUB,
             ErrorKind::Malformed,
-            "Malformed: from_prior `sub` must be a non-fragment DID",
+            "Message malformed or invalid: from_prior `sub` must be a non-fragment DID",
         )
         .await;
 
         _from_prior_pack_works_invalid(
             &FROM_PRIOR_INVALID_SUB_DID_URL,
             ErrorKind::Malformed,
-            "Malformed: from_prior `sub` must be a non-fragment DID",
+            "Message malformed or invalid: from_prior `sub` must be a non-fragment DID",
         )
         .await;
 
         _from_prior_pack_works_invalid(
             &FROM_PRIOR_INVALID_EQUAL_ISS_AND_SUB,
             ErrorKind::Malformed,
-            "Malformed: from_prior `iss` and `sub` values must not be equal",
+            "Message malformed or invalid: from_prior `iss` and `sub` values must not be equal",
         )
         .await;
 
@@ -369,7 +369,7 @@ mod tests {
                 .expect_err("res is ok");
 
             assert_eq!(err.kind(), err_kind);
-            assert_eq!(format!("{}", err), err_mgs);
+            assert_eq!(format!("{err}"), err_mgs);
         }
     }
 }
