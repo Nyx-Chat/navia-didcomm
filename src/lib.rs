@@ -1,3 +1,45 @@
+//! # Navia-DIDComm
+//!
+//! Production-ready DIDComm v2 implementation for secure peer-to-peer messaging.
+//!
+//! This library provides a complete implementation of the [DIDComm v2 specification](https://identity.foundation/didcomm-messaging/spec/)
+//! with modern cryptographic libraries and production-ready security features.
+//!
+//! ## Features
+//!
+//! - **Complete DIDComm v2 Support**: Full specification implementation
+//! - **Modern Cryptography**: X25519, P-256, P-384, P-521, Ed25519, Secp256k1
+//! - **Secure Messaging**: Encrypted (anoncrypt/authcrypt) and signed messages
+//! - **Message Routing**: Forward protocol and mediation support
+//! - **DID Rotation**: Full `fromPrior` field support
+//! - **Production Ready**: Comprehensive testing, security audits, and performance optimization
+//!
+//! ## Quick Start
+//!
+//! ```rust
+//! use navia_didcomm::{Message, PackEncryptedOptions};
+//! use serde_json::json;
+//!
+//! // Build a message
+//! let msg = Message::build(
+//!     "example-1".into(),
+//!     "example/v1".into(),
+//!     json!("Hello, DIDComm!"),
+//! )
+//! .to("did:example:recipient".into())
+//! .from("did:example:sender".into())
+//! .finalize();
+//!
+//! // Pack and send (async context required)
+//! // let (packed_msg, metadata) = msg.pack_encrypted(...).await?;
+//! ```
+//!
+//! For complete examples, see the [examples](https://github.com/Nyx-Chat/navia-didcomm/tree/main/examples) directory.
+
+#![doc(html_root_url = "https://docs.rs/navia-didcomm/1.0.0")]
+#![warn(missing_docs, rust_2018_idioms)]
+#![deny(unsafe_code)]
+
 mod jwe;
 mod jwk;
 mod jws;

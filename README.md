@@ -1,29 +1,31 @@
-# DIDComm Rust + JavaScript/TypeScript + Swift
+# Navia-DIDComm
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Unit Tests](https://github.com/sicpa-dlab/didcomm-rust/workflows/verify/badge.svg)](https://github.com/sicpa-dlab/didcomm-rust/actions/workflows/verify.yml)
-[![Rust Package](https://img.shields.io/crates/v/didcomm)](https://crates.io/crates/didcomm/)
+[![Crates.io](https://img.shields.io/crates/v/navia-didcomm.svg)](https://crates.io/crates/navia-didcomm)
+[![Documentation](https://docs.rs/navia-didcomm/badge.svg)](https://docs.rs/navia-didcomm)
+[![Build Status](https://github.com/Nyx-Chat/navia-didcomm/workflows/CI/badge.svg)](https://github.com/Nyx-Chat/navia-didcomm/actions)
 
-The repository consists of the following main components:
-- Basic [DIDComm v2](https://identity.foundation/didcomm-messaging/spec) support in Rust.
-- [Wasm](https://webassembly.org/) - based DIDComm JavaScript/TypeScript, see [wasm](/wasm).
-- [uniffi-rs](https://github.com/mozilla/uniffi-rs) - based wrappers
-  - [uniffi](/uniffi) - callback-based Rust wrapper with uniffi-rs support
-  - [wrappers/swift](/wrappers/swift) - Swift wrapper generated via uniffi-rs  
+**Production-ready DIDComm v2 implementation for secure peer-to-peer messaging**
 
-The docs below are provided for the main DIDComm Rust.
+Navia-DIDComm is a complete, modern implementation of the [DIDComm v2 specification](https://identity.foundation/didcomm-messaging/spec/) built for production use in the [Nyx](https://github.com/Nyx-Chat) ecosystem.
 
-See [wasm/README.md](/wasm/README.md) for DIDComm JavaScript/TypeScript docs.
+## ✨ Features
 
-See [wrappers/swift/README.md](/wrappers/swift/README.md) for DIDComm Swift docs.
+- 🔒 **Complete DIDComm v2 Support** - Full specification implementation
+- 🚀 **Production Ready** - Comprehensive testing, security audits, modern dependencies
+- 🔐 **Modern Cryptography** - X25519, P-256, P-384, P-521, Ed25519, Secp256k1
+- 📨 **Secure Messaging** - Encrypted (anoncrypt/authcrypt) and signed messages  
+- 🔄 **Message Routing** - Forward protocol and mediation support
+- 🔑 **DID Rotation** - Full `fromPrior` field support
+- ⚡ **High Performance** - Optimized for speed and low memory usage
 
-## Usage
+## 🚀 Quick Start
 
-To use `didcomm`, add this to your `Cargo.toml`:
+Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-didcomm = "0.4"
+navia-didcomm = "1.0"
 ```
 
 ## Run examples

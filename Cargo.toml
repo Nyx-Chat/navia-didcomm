@@ -22,14 +22,20 @@ name = 'rotate_did'
 name = 'routing'
 
 [package]
-name = 'didcomm'
-version = '0.4.1'
-authors = ['Vyacheslav Gudkov <vyacheslav.gudkov@dsr-corporation.com>']
-edition = '2018'
-description = 'DIDComm for Rust'
+name = 'navia-didcomm'
+version = '1.0.0'
+authors = ['Nyx Team <dev@nyx.chat>', 'Vyacheslav Gudkov <vyacheslav.gudkov@dsr-corporation.com>']
+edition = '2021'
+rust-version = '1.70'
+description = 'Production-ready DIDComm v2 implementation for secure peer-to-peer messaging'
 license = 'Apache-2.0'
-repository = 'https://github.com/sicpa-dlab/didcomm-rust'
+repository = 'https://github.com/Nyx-Chat/navia-didcomm'
+homepage = 'https://github.com/Nyx-Chat/navia-didcomm'
+documentation = 'https://docs.rs/navia-didcomm'
 readme = 'README.md'
+keywords = ['didcomm', 'messaging', 'cryptography', 'decentralized', 'privacy']
+categories = ['cryptography', 'network-programming', 'authentication']
+exclude = ['wasm/', 'uniffi/', 'wrappers/', 'benches/']
 
 [dependencies]
 anyhow = '1.0'

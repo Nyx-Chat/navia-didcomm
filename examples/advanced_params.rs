@@ -4,9 +4,9 @@ mod test_vectors;
 
 // TODO: look for better solution
 // Allows test vectors usage inside and outside crate
-pub(crate) use didcomm;
+pub(crate) use navia_didcomm as didcomm;
 
-use didcomm::{
+use navia_didcomm::{
     algorithms::{AnonCryptAlg, AuthCryptAlg},
     did::resolvers::ExampleDIDResolver,
     protocols::routing::try_parse_forward,
