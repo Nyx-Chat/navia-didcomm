@@ -10,4 +10,4 @@ pub use did_doc::{
 };
 
 pub use did_resolver::DIDResolver;
-pub(crate) use caching_resolver::CachingDIDResolver;
+pub use caching_resolver::CachingDIDResolver;

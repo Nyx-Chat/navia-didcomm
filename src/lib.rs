@@ -133,11 +133,6 @@ mod debug_key_tests {
     }
 }
 
-#[cfg(feature = "testvectors")]
-pub(crate) use crate as didcomm;
-
-#[cfg(feature = "testvectors")]
-pub mod test_vectors;
 
 /// DIDComm cryptographic algorithms and protocol configuration.
 /// 

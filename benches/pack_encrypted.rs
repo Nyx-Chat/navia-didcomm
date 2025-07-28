@@ -1,5 +1,5 @@
 // Allows share test vectors between unit and integration tests
-pub(crate) use didcomm;
+pub(crate) use navia_didcomm as didcomm;
 
 #[allow(unused_imports, dead_code)]
 #[path = "../src/test_vectors/mod.rs"]
@@ -7,7 +7,7 @@ mod test_vectors;
 
 use criterion::{async_executor::FuturesExecutor, criterion_group, criterion_main, Criterion};
 
-use didcomm::{
+use navia_didcomm::{
     algorithms::AnonCryptAlg, did::resolvers::ExampleDIDResolver,
     secrets::resolvers::ExampleSecretsResolver, PackEncryptedOptions,
 };
@@ -42,7 +42,7 @@ fn benchmarks(c: &mut Criterion) {
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
 
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -64,7 +64,7 @@ fn benchmarks(c: &mut Criterion) {
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
 
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -89,7 +89,7 @@ fn benchmarks(c: &mut Criterion) {
         let sign_by = None;
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -114,7 +114,7 @@ fn benchmarks(c: &mut Criterion) {
         let sign_by = None;
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -139,7 +139,7 @@ fn benchmarks(c: &mut Criterion) {
         let sign_by = None;
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -161,7 +161,7 @@ fn benchmarks(c: &mut Criterion) {
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
 
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -186,7 +186,7 @@ fn benchmarks(c: &mut Criterion) {
         let sign_by = None;
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -211,7 +211,7 @@ fn benchmarks(c: &mut Criterion) {
         let sign_by = None;
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -236,7 +236,7 @@ fn benchmarks(c: &mut Criterion) {
         let sign_by = None;
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -258,7 +258,7 @@ fn benchmarks(c: &mut Criterion) {
         let sign_by = None;
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -280,7 +280,7 @@ fn benchmarks(c: &mut Criterion) {
         let sign_by = None;
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -302,7 +302,7 @@ fn benchmarks(c: &mut Criterion) {
         let sign_by = None;
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -322,7 +322,7 @@ fn benchmarks(c: &mut Criterion) {
         let sign_by = None;
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -344,7 +344,7 @@ fn benchmarks(c: &mut Criterion) {
         let sign_by = None;
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -368,7 +368,7 @@ fn benchmarks(c: &mut Criterion) {
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
 
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -390,7 +390,7 @@ fn benchmarks(c: &mut Criterion) {
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
 
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -415,7 +415,7 @@ fn benchmarks(c: &mut Criterion) {
         let sign_by = None;
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -440,7 +440,7 @@ fn benchmarks(c: &mut Criterion) {
         let sign_by = None;
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -467,7 +467,7 @@ fn benchmarks(c: &mut Criterion) {
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
 
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -492,7 +492,7 @@ fn benchmarks(c: &mut Criterion) {
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
 
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -517,7 +517,7 @@ fn benchmarks(c: &mut Criterion) {
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
 
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -542,7 +542,7 @@ fn benchmarks(c: &mut Criterion) {
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
 
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -569,7 +569,7 @@ fn benchmarks(c: &mut Criterion) {
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
 
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -596,7 +596,7 @@ fn benchmarks(c: &mut Criterion) {
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
 
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -623,7 +623,7 @@ fn benchmarks(c: &mut Criterion) {
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
 
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -650,7 +650,7 @@ fn benchmarks(c: &mut Criterion) {
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
 
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,
@@ -677,7 +677,7 @@ fn benchmarks(c: &mut Criterion) {
         let did_resolver =
             ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
 
-        let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
         let opts = PackEncryptedOptions {
             forward: false,

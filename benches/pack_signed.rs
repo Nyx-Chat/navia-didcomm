@@ -1,12 +1,12 @@
 // Allows share test vectors between unit and integration tests
-pub(crate) use didcomm;
+pub(crate) use navia_didcomm as didcomm;
 
 #[allow(unused_imports, dead_code)]
 #[path = "../src/test_vectors/mod.rs"]
 mod test_vectors;
 
 use criterion::{async_executor::FuturesExecutor, criterion_group, criterion_main, Criterion};
-use didcomm::{did::resolvers::ExampleDIDResolver, secrets::resolvers::ExampleSecretsResolver};
+use navia_didcomm::{did::resolvers::ExampleDIDResolver, secrets::resolvers::ExampleSecretsResolver};
 
 use test_vectors::{
     ALICE_AUTH_METHOD_25519, ALICE_AUTH_METHOD_P256, ALICE_AUTH_METHOD_SECPP256K1, ALICE_DID_DOC,
@@ -28,7 +28,7 @@ async fn pack_signed(
 fn benchmarks(c: &mut Criterion) {
     let sign_by = &ALICE_AUTH_METHOD_25519.id;
     let did_resolver = ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone()]);
-    let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+    let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
     c.bench_function("pack_signed_ed25519", move |b| {
         b.to_async(FuturesExecutor)
@@ -37,7 +37,7 @@ fn benchmarks(c: &mut Criterion) {
 
     let sign_by = &ALICE_AUTH_METHOD_P256.id;
     let did_resolver = ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone()]);
-    let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+    let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
     c.bench_function("pack_signed_p256", move |b| {
         b.to_async(FuturesExecutor)
@@ -46,7 +46,7 @@ fn benchmarks(c: &mut Criterion) {
 
     let sign_by = &ALICE_AUTH_METHOD_SECPP256K1.id;
     let did_resolver = ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone()]);
-    let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+    let secrets_resolver = ExampleSecretsResolver::new((*ALICE_SECRETS).clone());
 
     c.bench_function("pack_signed_k256", move |b| {
         b.to_async(FuturesExecutor)

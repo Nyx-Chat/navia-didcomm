@@ -1,7 +1,8 @@
 //! Caching DID resolver wrapper to avoid duplicate resolutions
 
 use std::collections::HashMap;
-use std::cell::RefCell;
+use std::sync::RwLock;
+#[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 use async_trait::async_trait;
 
@@ -12,9 +13,9 @@ use crate::{did::{DIDDoc, DIDResolver}, error::Result};
 /// 
 /// This is a simple in-memory cache that stores resolved DID documents
 /// for the lifetime of the CachingDIDResolver instance.
-pub(crate) struct CachingDIDResolver<'r> {
+pub struct CachingDIDResolver<'r> {
     resolver: &'r dyn DIDResolver,
-    cache: RefCell<HashMap<String, Option<DIDDoc>>>,
+    cache: RwLock<HashMap<String, Option<DIDDoc>>>,
     #[cfg(test)]
     pub(crate) resolution_count: AtomicUsize,
 }
@@ -24,7 +25,7 @@ impl<'r> CachingDIDResolver<'r> {
     pub fn new(resolver: &'r dyn DIDResolver) -> Self {
         Self {
             resolver,
-            cache: RefCell::new(HashMap::new()),
+            cache: RwLock::new(HashMap::new()),
             #[cfg(test)]
             resolution_count: AtomicUsize::new(0),
         }
@@ -41,8 +42,10 @@ impl<'r> CachingDIDResolver<'r> {
 impl<'r> DIDResolver for CachingDIDResolver<'r> {
     async fn resolve(&self, did: &str) -> Result<Option<DIDDoc>> {
         // Check cache first
-        if let Some(cached_result) = self.cache.borrow().get(did) {
-            return Ok(cached_result.clone());
+        if let Ok(cache) = self.cache.read() {
+            if let Some(cached_result) = cache.get(did) {
+                return Ok(cached_result.clone());
+            }
         }
         
         // Resolve and cache the result
@@ -50,7 +53,9 @@ impl<'r> DIDResolver for CachingDIDResolver<'r> {
         self.resolution_count.fetch_add(1, Ordering::Relaxed);
         
         let result = self.resolver.resolve(did).await?;
-        self.cache.borrow_mut().insert(did.to_string(), result.clone());
+        if let Ok(mut cache) = self.cache.write() {
+            cache.insert(did.to_string(), result.clone());
+        }
         
         Ok(result)
     }
@@ -61,8 +66,10 @@ impl<'r> DIDResolver for CachingDIDResolver<'r> {
 impl<'r> DIDResolver for CachingDIDResolver<'r> {
     async fn resolve(&self, did: &str) -> Result<Option<DIDDoc>> {
         // Check cache first
-        if let Some(cached_result) = self.cache.borrow().get(did) {
-            return Ok(cached_result.clone());
+        if let Ok(cache) = self.cache.read() {
+            if let Some(cached_result) = cache.get(did) {
+                return Ok(cached_result.clone());
+            }
         }
         
         // Resolve and cache the result
@@ -70,7 +77,9 @@ impl<'r> DIDResolver for CachingDIDResolver<'r> {
         self.resolution_count.fetch_add(1, Ordering::Relaxed);
         
         let result = self.resolver.resolve(did).await?;
-        self.cache.borrow_mut().insert(did.to_string(), result.clone());
+        if let Ok(mut cache) = self.cache.write() {
+            cache.insert(did.to_string(), result.clone());
+        }
         
         Ok(result)
     }

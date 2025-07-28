@@ -17,6 +17,7 @@ use crate::{
     utils::{
         crypto::{AsKnownKeyPair, KnownKeyAlg},
         did::did_or_url,
+        secure_cmp::secure_string_eq,
     },
 };
 
@@ -83,7 +84,7 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
             from_ddoc
                 .verification_method
                 .iter()
-                .find(|vm| vm.id == kid)
+                .find(|vm| secure_string_eq(&vm.id, kid))
                 .ok_or_else(|| {
                     err_msg(
                         ErrorKind::Malformed,
@@ -118,7 +119,7 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
             to_ddoc
                 .verification_method
                 .iter()
-                .find(|vm| vm.id == kid)
+                .find(|vm| secure_string_eq(&vm.id, kid))
                 .ok_or_else(|| {
                     err_msg(
                         ErrorKind::Malformed,
