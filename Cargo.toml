@@ -39,7 +39,7 @@ documentation = 'https://docs.rs/navia-didcomm'
 readme = 'README.md'
 keywords = ['didcomm', 'messaging', 'cryptography', 'decentralized', 'privacy']
 categories = ['cryptography', 'network-programming', 'authentication']
-exclude = ['wasm/', 'uniffi/', 'wrappers/', 'benches/']
+exclude = []
 
 [dependencies]
 anyhow = '1.0'
@@ -82,7 +82,6 @@ features = [
 
 [dev-dependencies.getrandom]
 version = '0.2'
-features = ['js']
 
 [dev-dependencies.criterion]
 version = '0.3'
