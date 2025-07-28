@@ -5,6 +5,7 @@ use askar_crypto::{
     random,
     repr::{KeyGen, ToSecretBytes},
 };
+use base64::prelude::*;
 use std::borrow::Cow;
 
 use sha2::{Digest, Sha256};
@@ -47,8 +48,8 @@ where
 
     let protected = {
         let epk = epk.to_jwk_public_value()?;
-        let apu = skid.map(|skid| base64::encode_config(skid, base64::URL_SAFE_NO_PAD));
-        let apv = base64::encode_config(apv, base64::URL_SAFE_NO_PAD);
+        let apu = skid.map(|skid| BASE64_URL_SAFE_NO_PAD.encode(skid));
+        let apv = BASE64_URL_SAFE_NO_PAD.encode(apv);
 
         let p = ProtectedHeader {
             typ: Some(Cow::Borrowed("application/didcomm-encrypted+json")),
@@ -63,7 +64,7 @@ where
         let p = serde_json::to_string(&p)
             .kind(ErrorKind::InvalidState, "Unable serialize protected header")?;
 
-        base64::encode_config(&p, base64::URL_SAFE_NO_PAD)
+        BASE64_URL_SAFE_NO_PAD.encode(&p)
     };
 
     let mut buf = {
@@ -84,9 +85,9 @@ where
         let ciphertext = &buf.as_ref()[0..ciphertext_len];
         let tag_raw = &buf.as_ref()[ciphertext_len..];
 
-        let ciphertext = base64::encode_config(&ciphertext, base64::URL_SAFE_NO_PAD);
-        let tag = base64::encode_config(&tag_raw, base64::URL_SAFE_NO_PAD);
-        let iv = base64::encode_config(&iv, base64::URL_SAFE_NO_PAD);
+        let ciphertext = BASE64_URL_SAFE_NO_PAD.encode(ciphertext);
+        let tag = BASE64_URL_SAFE_NO_PAD.encode(tag_raw);
+        let iv = BASE64_URL_SAFE_NO_PAD.encode(&iv);
 
         (ciphertext, tag, tag_raw, iv)
     };
@@ -98,11 +99,11 @@ where
             let kw = KDF::derive_key(
                 &epk,
                 skey,
-                &key,
+                key,
                 alg.as_str().as_bytes(),
                 skid.as_ref().map(|s| s.as_bytes()).unwrap_or(&[]),
                 apv.as_slice(),
-                &tag_raw,
+                tag_raw,
                 false,
             )
             .kind(ErrorKind::InvalidState, "Unable derive kw")?; //TODO Check this test and move to decrypt
@@ -111,8 +112,8 @@ where
                 .wrap_key(&cek)
                 .kind(ErrorKind::InvalidState, "Unable wrap key")?;
 
-            let encrypted_key = base64::encode_config(&encrypted_key, base64::URL_SAFE_NO_PAD);
-            encrypted_keys.push((kid.clone(), encrypted_key));
+            let encrypted_key = BASE64_URL_SAFE_NO_PAD.encode(&encrypted_key);
+            encrypted_keys.push((kid, encrypted_key));
         }
 
         encrypted_keys
@@ -122,7 +123,7 @@ where
         .iter()
         .map(|(kid, encrypted_key)| Recipient {
             header: PerRecipientHeader { kid },
-            encrypted_key: &encrypted_key,
+            encrypted_key,
         })
         .collect();
 
@@ -441,6 +442,6 @@ mod tests {
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::InvalidState);
-        assert_eq!(format!("{}", err), "Invalid state: Unable derive kw: Invalid state: No sender key for ecdh-1pu: No sender key for ecdh-1pu");
+        assert_eq!(format!("{err}"), "Invalid state: Unable derive kw: Invalid state: No sender key for ecdh-1pu: No sender key for ecdh-1pu");
     }
 }

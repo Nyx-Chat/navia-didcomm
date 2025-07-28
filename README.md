@@ -174,11 +174,11 @@ let (msg, metadata) = msg
 
 Signed messages are only necessary when
 - the origin of plaintext must be provable to third parties
-- or the sender can’t be proven to the recipient by authenticated encryption because the recipient is not known in advance (e.g., in a
+- or the sender can't be proven to the recipient by authenticated encryption because the recipient is not known in advance (e.g., in a
 broadcast scenario).
  
 Adding a signature when one is not needed can degrade rather than enhance security because it
-relinquishes the sender’s ability to speak off the record.
+relinquishes the sender's ability to speak off the record.
 
 See `Message::pack_signed` documentation for more details.
 

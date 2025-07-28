@@ -90,8 +90,7 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
                     err_msg(
                         ErrorKind::Malformed,
                         format!(
-                            "No verification material found for sender key agreement {}",
-                            kid
+                            "No verification material found for sender key agreement {kid}"
                         ),
                     )
                 })
@@ -127,8 +126,7 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
                     err_msg(
                         ErrorKind::Malformed,
                         format!(
-                            "No verification material found for recipient key agreement {}",
-                            kid
+                            "No verification material found for recipient key agreement {kid}"
                         ),
                     )
                 })
@@ -143,10 +141,8 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
         .find(|from_key| {
             to_keys
                 .iter()
-                .find(|to_key| to_key.key_alg() == from_key.key_alg())
-                .is_some()
-        })
-        .map(|&key| key)
+                .any(|to_key| to_key.key_alg() == from_key.key_alg())
+        }).copied()
         .ok_or_else(|| {
             err_msg(
                 ErrorKind::NoCompatibleCrypto,

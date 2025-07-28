@@ -63,7 +63,7 @@ impl FromPrior {
                 )
             })?;
 
-            if did != &self.iss {
+            if did != self.iss {
                 Err(err_msg(
                     ErrorKind::IllegalArgument,
                     "from_prior issuer kid does not belong to from_prior `iss`",
@@ -89,8 +89,7 @@ impl FromPrior {
         let kid = *secrets_resolver
             .find_secrets(&authentication_kids)
             .await
-            .context("Unable to find secrets")?
-            .get(0)
+            .context("Unable to find secrets")?.first()
             .ok_or_else(|| {
                 err_msg(
                     ErrorKind::SecretNotFound,
@@ -154,7 +153,7 @@ impl FromPrior {
             ))?;
         }
 
-        if &self.iss == &self.sub {
+        if self.iss == self.sub {
             Err(err_msg(
                 ErrorKind::Malformed,
                 "from_prior `iss` and `sub` values must not be equal",
@@ -171,7 +170,7 @@ impl FromPrior {
                 ))?;
             };
 
-            if did != &self.iss {
+            if did != self.iss {
                 Err(err_msg(
                     ErrorKind::IllegalArgument,
                     "from_prior issuer kid does not belong to from_prior `iss`",
@@ -308,7 +307,7 @@ mod tests {
                 .expect_err("res is ok");
 
             assert_eq!(err.kind(), err_kind);
-            assert_eq!(format!("{}", err), err_mgs);
+            assert_eq!(format!("{err}"), err_mgs);
         }
     }
 
@@ -369,7 +368,7 @@ mod tests {
                 .expect_err("res is ok");
 
             assert_eq!(err.kind(), err_kind);
-            assert_eq!(format!("{}", err), err_mgs);
+            assert_eq!(format!("{err}"), err_mgs);
         }
     }
 }

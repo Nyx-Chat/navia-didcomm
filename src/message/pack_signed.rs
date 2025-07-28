@@ -20,7 +20,7 @@ impl Message {
     /// or to prove the sender to the recipient. Both of these guarantees automatically occur
     /// with the authenticated encryption in DIDComm encrypted messages. Signed messages are only
     /// necessary when the origin of plaintext must be provable to third parties,
-    /// or when the sender can’t be proven to the recipient by authenticated encryption because
+    /// or when the sender can't be proven to the recipient by authenticated encryption because
     /// the recipient is not known in advance (e.g., in a broadcast scenario).
     /// We therefore expect signed messages to be used in a few cases, but not as a matter of course.
     ///
@@ -78,8 +78,7 @@ impl Message {
         let key_id = *secrets_resolver
             .find_secrets(&authentications)
             .await
-            .context("Unable find secrets")?
-            .get(0)
+            .context("Unable find secrets")?.first()
             .ok_or_else(|| err_msg(ErrorKind::SecretNotFound, "No signer secrets found"))?;
 
         let secret = secrets_resolver
@@ -140,7 +139,8 @@ mod tests {
         alg::{ed25519::Ed25519KeyPair, k256::K256KeyPair, p256::P256KeyPair},
         sign::KeySigVerify,
     };
-    use std::borrow::Cow;
+        use std::borrow::Cow;
+    use base64::prelude::*;
 
     use serde_json::Value;
 
@@ -252,7 +252,7 @@ mod tests {
             );
 
             let payload: Value = {
-                let payload = base64::decode_config(msg.jws.payload, base64::URL_SAFE_NO_PAD)
+                let payload = BASE64_URL_SAFE_NO_PAD.decode(msg.jws.payload)
                     .expect("Unable decode_config");
 
                 serde_json::from_slice(&payload).expect("Unable from_str")
@@ -266,7 +266,7 @@ mod tests {
             assert_eq!(
                 msg.jws.signatures[0].header,
                 Header {
-                    kid: sign_by_kid.into()
+                    kid: sign_by_kid
                 }
             );
 
@@ -297,7 +297,7 @@ mod tests {
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::DIDNotResolved);
 
-        assert_eq!(format!("{}", err), "DID not resolved: Signer did not found");
+        assert_eq!(format!("{err}"), "DID not resolved: Signer did not found");
     }
 
     #[tokio::test]
@@ -315,7 +315,7 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::IllegalArgument);
 
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "Illegal argument: `sign_from` value is not a valid DID or DID URL"
         );
     }
@@ -327,7 +327,7 @@ mod tests {
 
         let res = MESSAGE_SIMPLE
             .pack_signed(
-                &format!("{}#unkown", ALICE_DID),
+                &format!("{ALICE_DID}#unkown"),
                 &did_resolver,
                 &secrets_resolver,
             )
@@ -337,7 +337,7 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::DIDUrlNotFound);
 
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "DID URL not found: Signer key id not found in did doc"
         );
     }
@@ -357,7 +357,7 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::InvalidState);
 
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "Invalid state: Unable resolve signer did: Mock error"
         );
     }
@@ -369,7 +369,7 @@ mod tests {
 
         let res = MESSAGE_SIMPLE
             .pack_signed(
-                &"did:example:alice#key-not-in-secrets-1",
+                "did:example:alice#key-not-in-secrets-1",
                 &did_resolver,
                 &secrets_resolver,
             )
@@ -379,7 +379,7 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::SecretNotFound);
 
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "Secret not found: No signer secrets found"
         );
     }
@@ -409,7 +409,7 @@ mod tests {
 
         let res = MESSAGE_SIMPLE
             .pack_signed(
-                &"did:example:alice#key-d25519-1",
+                "did:example:alice#key-d25519-1",
                 &did_resolver,
                 &secrets_resolver,
             )
@@ -419,7 +419,7 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::Unsupported);
 
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "Unsupported crypto or method: Unable instantiate sign key: Unsupported key type or curve"
         );
     }

@@ -17,7 +17,7 @@ pub struct Message {
 
     /// Message type attribute value MUST be a valid Message Type URI,
     /// that when resolved gives human readable information about the message.
-    /// The attribute’s value also informs the content of the message,
+    /// The attribute's value also informs the content of the message,
     /// or example the presence of other attributes and how they should be processed.
     #[serde(rename = "type")]
     pub type_: String,
@@ -32,7 +32,7 @@ pub struct Message {
 
     /// Identifier(s) for recipients. MUST be an array of strings where each element
     /// is a valid DID or DID URL (without the fragment component) that identifies a member
-    /// of the message’s intended audience.
+    /// of the message's intended audience.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub to: Option<Vec<String>>,
 
@@ -93,7 +93,7 @@ impl Message {
         if self.typ != PLAINTEXT_TYP {
             Err(err_msg(
                 ErrorKind::Malformed,
-                format!("`typ` must be \"{}\"", PLAINTEXT_TYP),
+                format!("`typ` must be \"{PLAINTEXT_TYP}\""),
             ))?;
         }
         Ok(self)

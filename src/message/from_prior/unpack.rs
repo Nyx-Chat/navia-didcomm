@@ -6,6 +6,7 @@ use crate::{
     FromPrior,
 };
 use askar_crypto::alg::{ed25519::Ed25519KeyPair, k256::K256KeyPair, p256::P256KeyPair};
+use base64::prelude::*;
 
 impl FromPrior {
     /// Unpacks a plaintext value from a signed `from_prior` JWT.
@@ -76,7 +77,7 @@ impl FromPrior {
         let key = did_doc
             .verification_method
             .iter()
-            .find(|&vm| &vm.id == kid)
+            .find(|&vm| vm.id == kid)
             .ok_or_else(|| {
                 err_msg(
                     ErrorKind::DIDUrlNotFound,
@@ -122,7 +123,7 @@ impl FromPrior {
             Err(err_msg(ErrorKind::Malformed, "Wrong from_prior signature"))?
         }
 
-        let payload = base64::decode_config(parsed.payload, base64::URL_SAFE_NO_PAD).kind(
+        let payload = BASE64_URL_SAFE_NO_PAD.decode(parsed.payload).kind(
             ErrorKind::Malformed,
             "from_prior payload is not a valid base64",
         )?;
@@ -175,7 +176,7 @@ mod tests {
 
         assert_eq!(err.kind(), ErrorKind::Malformed);
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "Malformed: Unable to parse compactly serialized JWS"
         );
     }
@@ -190,6 +191,6 @@ mod tests {
             .expect_err("res is ok");
 
         assert_eq!(err.kind(), ErrorKind::Malformed);
-        assert_eq!(format!("{}", err), "Malformed: Unable to verify from_prior signature: Unable decode signature: Invalid last symbol 66, offset 85.");
+        assert_eq!(format!("{err}"), "Malformed: Unable to verify from_prior signature: Unable decode signature: Invalid last symbol 66, offset 85.");
     }
 }

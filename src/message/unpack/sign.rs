@@ -1,4 +1,5 @@
 use askar_crypto::alg::{ed25519::Ed25519KeyPair, k256::K256KeyPair, p256::P256KeyPair};
+use base64::prelude::*;
 
 use crate::jws::JWS;
 use crate::{
@@ -83,7 +84,7 @@ pub(crate) async fn _try_unpack_sign<'dr>(
     let signer_key = signer_ddoc
         .verification_method
         .iter()
-        .find(|&vm| &vm.id == signer_kid)
+        .find(|&vm| vm.id == signer_kid)
         .ok_or_else(|| {
             err_msg(
                 ErrorKind::DIDUrlNotFound,
@@ -136,7 +137,7 @@ pub(crate) async fn _try_unpack_sign<'dr>(
     }
 
     // TODO: More precise error conversion
-    let payload = base64::decode_config(parsed_jws.jws.payload, base64::URL_SAFE_NO_PAD)
+    let payload = BASE64_URL_SAFE_NO_PAD.decode(parsed_jws.jws.payload)
         .kind(ErrorKind::Malformed, "Signed payloa is invalid base64")?;
 
     let payload =

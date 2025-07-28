@@ -1,4 +1,5 @@
 use askar_crypto::sign::KeySigVerify;
+use base64::prelude::*;
 
 use crate::{
     error::{err_msg, ErrorKind, Result, ResultExt},
@@ -25,7 +26,7 @@ impl<'a, 'b> ParsedJWS<'a, 'b> {
         let sig_type = protected.alg.sig_type()?;
         let sign_input = format!("{}.{}", signature.protected, self.jws.payload);
 
-        let signature = base64::decode_config(&signature.signature, base64::URL_SAFE_NO_PAD)
+        let signature = BASE64_URL_SAFE_NO_PAD.decode(signature.signature)
             .kind(ErrorKind::Malformed, "Unable decode signature")?;
 
         let valid = key
@@ -41,7 +42,7 @@ impl<'a> ParsedCompactJWS<'a> {
         let sig_type = self.parsed_header.alg.sig_type()?;
         let sign_input = format!("{}.{}", self.header, self.payload);
 
-        let signature = base64::decode_config(self.signature, base64::URL_SAFE_NO_PAD)
+        let signature = BASE64_URL_SAFE_NO_PAD.decode(self.signature)
             .kind(ErrorKind::Malformed, "Unable decode signature")?;
 
         let valid = key
@@ -74,7 +75,7 @@ mod tests {
         fn _verify_works<K: FromJwk + KeySigVerify>(kid: &str, key: &str, msg: &str) {
             let res = _verify::<K>(kid, key, msg);
             let res = res.expect("res is err");
-            assert_eq!(res, true);
+            assert!(res);
         }
     }
 
@@ -105,7 +106,7 @@ mod tests {
         ) {
             let res = _verify::<K>(kid, key, msg);
             let res = res.expect("res is err");
-            assert_eq!(res, true);
+            assert!(res);
         }
     }
 
@@ -124,7 +125,7 @@ mod tests {
         fn _verify_works_different_key<K: FromJwk + KeySigVerify>(kid: &str, key: &str, msg: &str) {
             let res = _verify::<K>(kid, key, msg);
             let res = res.expect("res is err");
-            assert_eq!(res, false);
+            assert!(!res);
         }
     }
 
@@ -155,7 +156,7 @@ mod tests {
         ) {
             let res = _verify::<K>(kid, key, msg);
             let res = res.expect("res is err");
-            assert_eq!(res, false);
+            assert!(!res);
         }
     }
 
@@ -199,7 +200,7 @@ mod tests {
             assert_eq!(err.kind(), ErrorKind::Malformed);
 
             assert_eq!(
-                format!("{}", err),
+                format!("{err}"),
                 "Malformed: Unable verify signature: Unsupported signature type"
             );
         }
@@ -226,7 +227,7 @@ mod tests {
 
             let err = res.expect_err("res is ok");
             assert_eq!(err.kind(), ErrorKind::InvalidState);
-            assert_eq!(format!("{}", err), "Invalid state: KID not found");
+            assert_eq!(format!("{err}"), "Invalid state: KID not found");
         }
     }
 
@@ -261,8 +262,8 @@ mod tests {
             assert_eq!(err.kind(), ErrorKind::Malformed);
 
             assert_eq!(
-                format!("{}", err),
-                "Malformed: Unable decode signature: Invalid byte 33, offset 0."
+                format!("{err}"),
+                "Malformed: Unable decode signature: Invalid symbol 33, offset 0."
             );
         }
     }
@@ -271,7 +272,7 @@ mod tests {
     fn verify_compact_works() {
         let res = _verify_compact::<Ed25519KeyPair>(ALICE_PKEY_ED25519, ALICE_COMPACT_MSG_ED25519);
         let res = res.expect("res is err");
-        assert_eq!(res, true);
+        assert!(res);
     }
 
     #[test]
@@ -280,7 +281,7 @@ mod tests {
         let res =
             _verify_compact::<Ed25519KeyPair>(CHARLIE_PKEY_ED25519, ALICE_COMPACT_MSG_ED25519);
         let res = res.expect("res is err");
-        assert_eq!(res, false);
+        assert!(!res);
     }
 
     #[test]
@@ -291,7 +292,7 @@ mod tests {
         );
 
         let res = res.expect("res is err");
-        assert_eq!(res, false);
+        assert!(!res);
     }
 
     #[test]
@@ -301,7 +302,7 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "Malformed: Unable verify signature: Unsupported signature type"
         );
     }
@@ -317,8 +318,8 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
         assert_eq!(
-            format!("{}", err),
-            "Malformed: Unable decode signature: Invalid byte 33, offset 0."
+            format!("{err}"),
+            "Malformed: Unable decode signature: Invalid symbol 33, offset 0."
         );
     }
 
@@ -330,7 +331,7 @@ mod tests {
         let key = Key::from_jwk(key).expect("unable from_jwk.");
 
         let mut buf = vec![];
-        let msg = jws::parse(&msg, &mut buf).expect("unable parse.");
+        let msg = jws::parse(msg, &mut buf).expect("unable parse.");
 
         msg.verify((kid, &key))
     }
@@ -339,7 +340,7 @@ mod tests {
         let key = Key::from_jwk(key).expect("unable from_jwk.");
 
         let mut buf = vec![];
-        let msg = jws::parse_compact(&msg, &mut buf).expect("unable parse.");
+        let msg = jws::parse_compact(msg, &mut buf).expect("unable parse.");
 
         msg.verify(&key)
     }
@@ -489,7 +490,7 @@ mod tests {
     const ALICE_PKEY_K256: &str = r#"
     {
         "kty":"EC",
-        "d":"N3Hm1LXA210YVGGsXw_GklMwcLu_bMgnzDese6YQIyA",
+        "crv":"secp256k1",
         "x":"aToW5EaTq5mlAf8C5ECYDSkqsJycrW-e1SQ6_GJcAOk",
         "y":"JAGX94caA21WKreXwYUaOCYTBMrqaX4KWIlsQZTHWCk"
     }

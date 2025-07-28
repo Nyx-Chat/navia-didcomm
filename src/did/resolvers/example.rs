@@ -23,7 +23,6 @@ impl DIDResolver for ExampleDIDResolver {
         Ok(self
             .known_dids
             .iter()
-            .find(|ddoc| ddoc.id == did)
-            .map(|ddoc| ddoc.clone()))
+            .find(|ddoc| ddoc.id == did).cloned())
     }
 }

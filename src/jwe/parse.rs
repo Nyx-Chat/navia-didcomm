@@ -1,3 +1,4 @@
+use base64::prelude::*;
 use sha2::{Digest, Sha256};
 
 use crate::error::ToResult;
@@ -24,18 +25,20 @@ impl<'a> JWE<'a> {
     }
 
     pub(crate) fn parse<'b>(self, buf: &'b mut Vec<u8>) -> Result<ParsedJWE<'a, 'b>> {
-        base64::decode_config_buf(self.protected, base64::URL_SAFE_NO_PAD, buf)
+        let decoded = BASE64_URL_SAFE_NO_PAD.decode(self.protected)
             .kind(ErrorKind::Malformed, "Unable decode protected header")?;
+        buf.clear();
+        buf.extend_from_slice(&decoded);
 
         let protected: ProtectedHeader =
             serde_json::from_slice(buf).to_didcomm("Unable parse protected header")?;
 
-        let apv = base64::decode_config(protected.apv, base64::URL_SAFE_NO_PAD)
+        let apv = BASE64_URL_SAFE_NO_PAD.decode(protected.apv)
             .kind(ErrorKind::Malformed, "Unable decode apv")?;
 
         let apu = protected
             .apu
-            .map(|apu| base64::decode_config(apu, base64::URL_SAFE_NO_PAD))
+            .map(|apu| BASE64_URL_SAFE_NO_PAD.decode(apu))
             .transpose()
             .kind(ErrorKind::Malformed, "Unable decode apu")?;
 
@@ -65,7 +68,7 @@ impl<'a, 'b> ParsedJWE<'a, 'b> {
             Sha256::digest(kids.join(".").as_bytes())
         };
 
-        if &self.apv != did_comm_apv.as_slice() {
+        if self.apv != did_comm_apv.as_slice() {
             Err(err_msg(ErrorKind::Malformed, "APV mismatch"))?;
         }
 
@@ -134,7 +137,7 @@ mod tests {
         "#;
 
         let mut buf = vec![];
-        let res = jwe::parse(&msg, &mut buf);
+        let res = jwe::parse(msg, &mut buf);
         let res = res.expect("res is err");
 
         let exp = ParsedJWE {
@@ -211,7 +214,7 @@ mod tests {
         "#;
 
         let mut buf = vec![];
-        let res = jwe::parse(&msg, &mut buf);
+        let res = jwe::parse(msg, &mut buf);
         let res = res.expect("res is err");
 
         let exp = ParsedJWE {
@@ -287,7 +290,7 @@ mod tests {
         "#;
 
         let mut buf = vec![];
-        let res = jwe::parse(&msg, &mut buf);
+        let res = jwe::parse(msg, &mut buf);
         let res = res.expect("res is err");
 
         let exp = ParsedJWE {
@@ -363,7 +366,7 @@ mod tests {
         "#;
 
         let mut buf = vec![];
-        let res = jwe::parse(&msg, &mut buf);
+        let res = jwe::parse(msg, &mut buf);
         let res = res.expect("res is err");
 
         let exp = ParsedJWE {
@@ -440,7 +443,7 @@ mod tests {
         "#;
 
         let mut buf = vec![];
-        let res = jwe::parse(&msg, &mut buf);
+        let res = jwe::parse(msg, &mut buf);
         let res = res.expect("res is err");
 
         let exp = ParsedJWE {
@@ -489,7 +492,7 @@ mod tests {
         let msg = r#"
         {
             "ciphertext":"MJezmxJ8DzUB01rMjiW6JViSaUhsZBhMvYtezkhmwts1qXWtDB63i4-FHZP6cJSyCI7eU-gqH8lBXO_UVuviWIqnIUrTRLaumanZ4q1dNKAnxNL-dHmb3coOqSvy3ZZn6W17lsVudjw7hUUpMbeMbQ5W8GokK9ZCGaaWnqAzd1ZcuGXDuemWeA8BerQsfQw_IQm-aUKancldedHSGrOjVWgozVL97MH966j3i9CJc3k9jS9xDuE0owoWVZa7SxTmhl1PDetmzLnYIIIt-peJtNYGdpd-FcYxIFycQNRUoFEr77h4GBTLbC-vqbQHJC1vW4O2LEKhnhOAVlGyDYkNbA4DSL-LMwKxenQXRARsKSIMn7z-ZIqTE-VCNj9vbtgR",
-            "protected":"eyJlcGsiOnsia3R5IjoiT0tQIiwiY3J2IjoiWDI1NTE5IiwieCI6IkdGY01vcEpsamY0cExaZmNoNGFfR2hUTV9ZQWY2aU5JMWRXREd5VkNhdzAifSwiYXB2IjoiTmNzdUFuclJmUEs2OUEtcmtaMEw5WFdVRzRqTXZOQzNaZzc0QlB6NTNQQSIsInNraWQiOiJkaWQ6ZXhhbXBsZTphbGljZSNrZXkteDI1NTE5LTEiLCJhcHUiOiJaR2xrT21WNFlXMXdiR1U2WVd4cFkyVWphMlY1TFhneU5UVXhPUzB4IiwidHlwIjoiYXBwbGljYXRpb24vZGlkY29tbS1lbmNyeXB0ZWQranNvbiIsImVuYyI6IkEyNTZDQkMtSFM1MTIiLCJhbGciOiJFQ0RILTFQVStBMjU2S1ciLCJleHRyYSI6InZhbHVlIn0=",
+            "protected":"eyJlcGsiOnsia3R5IjoiT0tQIiwiY3J2IjoiWDI1NTE5IiwieCI6IkdGY01vcEpsamY0cExaZmNoNGFfR2hUTV9ZQWY2aU5JMWRXREd5VkNhdzAifSwiYXB2IjoiTmNzdUFuclJmUEs2OUEtcmtaMEw5WFdVRzRqTXZOQzNaZzc0QlB6NTNQQSIsInNraWQiOiJkaWQ6ZXhhbXBsZTphbGljZSNrZXkteDI1NTE5LTEiLCJhcHUiOiJaR2xrT21WNFlXMXdiR1U2WVd4cFkyVWphMlY1TFhneU5UVXhPUzB4IiwidHlwIjoiYXBwbGljYXRpb24vZGlkY29tbS1lbmNyeXB0ZWQranNvbiIsImVuYyI6IkEyNTZDQkMtSFM1MTIiLCJhbGciOiJFQ0RILTFQVStBMjU2S1ciLCJleHRyYSI6InZhbHVlIn0",
             "recipients":[
                {
                   "encrypted_key":"o0FJASHkQKhnFo_rTMHTI9qTm_m2mkJp-wv96mKyT5TP7QjBDuiQ0AMKaPI_RLLB7jpyE-Q80Mwos7CvwbMJDhIEBnk2qHVB",
@@ -516,12 +519,12 @@ mod tests {
         "#;
 
         let mut buf = vec![];
-        let res = jwe::parse(&msg, &mut buf);
+        let res = jwe::parse(msg, &mut buf);
         let res = res.expect("res is err");
 
         let exp = ParsedJWE {
             jwe: JWE {
-                protected: "eyJlcGsiOnsia3R5IjoiT0tQIiwiY3J2IjoiWDI1NTE5IiwieCI6IkdGY01vcEpsamY0cExaZmNoNGFfR2hUTV9ZQWY2aU5JMWRXREd5VkNhdzAifSwiYXB2IjoiTmNzdUFuclJmUEs2OUEtcmtaMEw5WFdVRzRqTXZOQzNaZzc0QlB6NTNQQSIsInNraWQiOiJkaWQ6ZXhhbXBsZTphbGljZSNrZXkteDI1NTE5LTEiLCJhcHUiOiJaR2xrT21WNFlXMXdiR1U2WVd4cFkyVWphMlY1TFhneU5UVXhPUzB4IiwidHlwIjoiYXBwbGljYXRpb24vZGlkY29tbS1lbmNyeXB0ZWQranNvbiIsImVuYyI6IkEyNTZDQkMtSFM1MTIiLCJhbGciOiJFQ0RILTFQVStBMjU2S1ciLCJleHRyYSI6InZhbHVlIn0=",
+                protected: "eyJlcGsiOnsia3R5IjoiT0tQIiwiY3J2IjoiWDI1NTE5IiwieCI6IkdGY01vcEpsamY0cExaZmNoNGFfR2hUTV9ZQWY2aU5JMWRXREd5VkNhdzAifSwiYXB2IjoiTmNzdUFuclJmUEs2OUEtcmtaMEw5WFdVRzRqTXZOQzNaZzc0QlB6NTNQQSIsInNraWQiOiJkaWQ6ZXhhbXBsZTphbGljZSNrZXkteDI1NTE5LTEiLCJhcHUiOiJaR2xrT21WNFlXMXdiR1U2WVd4cFkyVWphMlY1TFhneU5UVXhPUzB4IiwidHlwIjoiYXBwbGljYXRpb24vZGlkY29tbS1lbmNyeXB0ZWQranNvbiIsImVuYyI6IkEyNTZDQkMtSFM1MTIiLCJhbGciOiJFQ0RILTFQVStBMjU2S1ciLCJleHRyYSI6InZhbHVlIn0",
                 recipients: vec![
                     Recipient {
                         header: PerRecipientHeader { kid: "did:example:bob#key-x25519-1" },
@@ -592,13 +595,13 @@ mod tests {
         "#;
 
         let mut buf = vec![];
-        let res = jwe::parse(&msg, &mut buf);
+        let res = jwe::parse(msg, &mut buf);
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "Malformed: Unable parse jwe: trailing comma at line 27 column 10"
         );
     }
@@ -634,13 +637,13 @@ mod tests {
         "#;
 
         let mut buf = vec![];
-        let res = jwe::parse(&msg, &mut buf);
+        let res = jwe::parse(msg, &mut buf);
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "Malformed: Unable parse jwe: missing field `iv` at line 26 column 10"
         );
     }
@@ -677,14 +680,14 @@ mod tests {
         "#;
 
         let mut buf = vec![];
-        let res = jwe::parse(&msg, &mut buf);
+        let res = jwe::parse(msg, &mut buf);
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
         assert_eq!(
-            format!("{}", err),
-            "Malformed: Unable decode protected header: Invalid byte 33, offset 0."
+            format!("{err}"),
+            "Malformed: Unable decode protected header: Invalid symbol 33, offset 0."
         );
     }
 
@@ -720,13 +723,13 @@ mod tests {
         "#;
 
         let mut buf = vec![];
-        let res = jwe::parse(&msg, &mut buf);
+        let res = jwe::parse(msg, &mut buf);
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "Malformed: Unable parse protected header: trailing comma at line 1 column 317"
         );
     }
@@ -763,13 +766,13 @@ mod tests {
         "#;
 
         let mut buf = vec![];
-        let res = jwe::parse(&msg, &mut buf);
+        let res = jwe::parse(msg, &mut buf);
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "Malformed: Unable parse protected header: missing field `alg` at line 1 column 292"
         );
     }
@@ -806,14 +809,14 @@ mod tests {
         "#;
 
         let mut buf = vec![];
-        let res = jwe::parse(&msg, &mut buf);
+        let res = jwe::parse(msg, &mut buf);
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
         assert_eq!(
-            format!("{}", err),
-            "Malformed: Unable decode apu: Encoded text cannot have a 6-bit remainder."
+            format!("{err}"),
+            "Malformed: Unable decode apu: Invalid symbol 33, offset 0."
         );
     }
 
@@ -850,7 +853,7 @@ mod tests {
 
         let mut buf = vec![];
 
-        let res = jwe::parse(&msg, &mut buf)
+        let res = jwe::parse(msg, &mut buf)
             .expect("Unable parse")
             .verify_didcomm();
 
@@ -858,7 +861,7 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
         assert_eq!(
-            format!("{}", err),
+            format!("{err}"),
             "Malformed: Invalid utf8 for apu: invalid utf-8 sequence of 1 bytes from index 0"
         );
     }
@@ -896,14 +899,14 @@ mod tests {
 
         let mut buf = vec![];
 
-        let res = jwe::parse(&msg, &mut buf)
+        let res = jwe::parse(msg, &mut buf)
             .expect("Unable parse")
             .verify_didcomm();
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
-        assert_eq!(format!("{}", err), "Malformed: APV mismatch");
+        assert_eq!(format!("{err}"), "Malformed: APV mismatch");
     }
 
     #[test]
@@ -939,7 +942,7 @@ mod tests {
 
         let mut buf = vec![];
 
-        let res = jwe::parse(&msg, &mut buf)
+        let res = jwe::parse(msg, &mut buf)
             .expect("Unable parse")
             .verify_didcomm()
             .expect("res is err");
@@ -1018,7 +1021,7 @@ mod tests {
 
         let mut buf = vec![];
 
-        let res = jwe::parse(&msg, &mut buf)
+        let res = jwe::parse(msg, &mut buf)
             .expect("Unable parse")
             .verify_didcomm()
             .expect("res is err");
@@ -1097,14 +1100,14 @@ mod tests {
 
         let mut buf = vec![];
 
-        let res = jwe::parse(&msg, &mut buf)
+        let res = jwe::parse(msg, &mut buf)
             .expect("Unable parse")
             .verify_didcomm();
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
-        assert_eq!(format!("{}", err), "Malformed: APU mismatch");
+        assert_eq!(format!("{err}"), "Malformed: APU mismatch");
     }
 
     #[test]
@@ -1140,13 +1143,13 @@ mod tests {
 
         let mut buf = vec![];
 
-        let res = jwe::parse(&msg, &mut buf)
+        let res = jwe::parse(msg, &mut buf)
             .expect("Unable parse")
             .verify_didcomm();
 
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::Malformed);
 
-        assert_eq!(format!("{}", err), "Malformed: SKID present, but no apu");
+        assert_eq!(format!("{err}"), "Malformed: SKID present, but no apu");
     }
 }
