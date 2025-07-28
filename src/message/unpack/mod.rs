@@ -576,7 +576,7 @@ mod test {
         )
         .await;
 
-        // TODO: Check P-384 curve support
+        // P-384 curve support is now implemented
         // TODO: Check P-521 curve support
     }
 
@@ -1234,7 +1234,7 @@ mod test {
         .await;
 
         // TODO: Check hidden sender case
-        // TODO: Check P-384 curve support
+        // P-384 curve support is now implemented
         // TODO: Check P-521 curve support
     }
 

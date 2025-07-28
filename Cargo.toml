@@ -57,7 +57,7 @@ features = ['derive']
 
 [dependencies.askar-crypto]
 version = '0.3.6'
-features = ['std', 'k256']
+features = ['std', 'k256', 'p384']
 
 [dependencies.uuid]
 version = "1.11"

@@ -4,6 +4,7 @@ use askar_crypto::{
         ed25519::Ed25519KeyPair,
         k256::K256KeyPair,
         p256::P256KeyPair,
+        p384::P384KeyPair,
         x25519::X25519KeyPair,
     },
     buffer::SecretBytes,
@@ -117,6 +118,7 @@ pub(crate) enum KnownKeyAlg {
     Ed25519,
     X25519,
     P256,
+    P384,
     K256,
     Unsupported,
 }
@@ -126,6 +128,7 @@ pub(crate) enum KnownKeyPair {
     Ed25519(Ed25519KeyPair),
     X25519(X25519KeyPair),
     P256(P256KeyPair),
+    P384(P384KeyPair),
     K256(K256KeyPair),
 }
 
@@ -162,6 +165,17 @@ pub(crate) trait AsKnownKeyPair {
 
         match self.as_key_pair()? {
             KnownKeyPair::P256(k) => Ok(k),
+            _ => Err(err_msg(ErrorKind::InvalidState, "Unexpected key pair type"))?,
+        }
+    }
+
+    fn as_p384(&self) -> Result<P384KeyPair> {
+        if self.key_alg() != KnownKeyAlg::P384 {
+            Err(err_msg(ErrorKind::InvalidState, "Unexpected key alg"))?
+        }
+
+        match self.as_key_pair()? {
+            KnownKeyPair::P384(k) => Ok(k),
             _ => Err(err_msg(ErrorKind::InvalidState, "Unexpected key pair type"))?,
         }
     }

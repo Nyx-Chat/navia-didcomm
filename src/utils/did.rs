@@ -1,5 +1,5 @@
 use askar_crypto::alg::{
-    ed25519::Ed25519KeyPair, k256::K256KeyPair, p256::P256KeyPair, x25519::X25519KeyPair,
+    ed25519::Ed25519KeyPair, k256::K256KeyPair, p256::P256KeyPair, p384::P384KeyPair, x25519::X25519KeyPair,
 };
 use askar_crypto::repr::{KeyPublicBytes, KeySecretBytes};
 use base64::prelude::*;
@@ -40,6 +40,7 @@ impl AsKnownKeyPair for VerificationMethod {
                 },
             ) => match (value["kty"].as_str(), value["crv"].as_str()) {
                 (Some(kty), Some(crv)) if kty == "EC" && crv == "P-256" => KnownKeyAlg::P256,
+                (Some(kty), Some(crv)) if kty == "EC" && crv == "P-384" => KnownKeyAlg::P384,
                 (Some(kty), Some(crv)) if kty == "EC" && crv == "secp256k1" => KnownKeyAlg::K256,
                 (Some(kty), Some(crv)) if kty == "OKP" && crv == "Ed25519" => KnownKeyAlg::Ed25519,
                 (Some(kty), Some(crv)) if kty == "OKP" && crv == "X25519" => KnownKeyAlg::X25519,
@@ -85,6 +86,11 @@ impl AsKnownKeyPair for VerificationMethod {
                     P256KeyPair::from_jwk_value(value)
                         .kind(ErrorKind::Malformed, "Unable parse jwk")
                         .map(KnownKeyPair::P256)
+                }
+                (Some(kty), Some(crv)) if kty == "EC" && crv == "P-384" => {
+                    P384KeyPair::from_jwk_value(value)
+                        .kind(ErrorKind::Malformed, "Unable parse jwk")
+                        .map(KnownKeyPair::P384)
                 }
                 (Some(kty), Some(crv)) if kty == "EC" && crv == "secp256k1" => {
                     K256KeyPair::from_jwk_value(value)
@@ -256,6 +262,7 @@ impl AsKnownKeyPair for Secret {
                 },
             ) => match (value["kty"].as_str(), value["crv"].as_str()) {
                 (Some(kty), Some(crv)) if kty == "EC" && crv == "P-256" => KnownKeyAlg::P256,
+                (Some(kty), Some(crv)) if kty == "EC" && crv == "P-384" => KnownKeyAlg::P384,
                 (Some(kty), Some(crv)) if kty == "EC" && crv == "secp256k1" => KnownKeyAlg::K256,
                 (Some(kty), Some(crv)) if kty == "OKP" && crv == "Ed25519" => KnownKeyAlg::Ed25519,
                 (Some(kty), Some(crv)) if kty == "OKP" && crv == "X25519" => KnownKeyAlg::X25519,
@@ -301,6 +308,11 @@ impl AsKnownKeyPair for Secret {
                     P256KeyPair::from_jwk_value(value)
                         .kind(ErrorKind::Malformed, "Unable parse jwk")
                         .map(KnownKeyPair::P256)
+                }
+                (Some(kty), Some(crv)) if kty == "EC" && crv == "P-384" => {
+                    P384KeyPair::from_jwk_value(value)
+                        .kind(ErrorKind::Malformed, "Unable parse jwk")
+                        .map(KnownKeyPair::P384)
                 }
                 (Some(kty), Some(crv)) if kty == "EC" && crv == "secp256k1" => {
                     K256KeyPair::from_jwk_value(value)

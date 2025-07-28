@@ -57,6 +57,7 @@ mod test_vectors;
 mod debug_key_tests {
     use askar_crypto::alg::ed25519::Ed25519KeyPair;
     use askar_crypto::alg::p256::P256KeyPair;
+    use askar_crypto::alg::p384::P384KeyPair;
     use askar_crypto::alg::k256::K256KeyPair;
     use askar_crypto::jwk::FromJwk;
 
@@ -76,6 +77,16 @@ mod debug_key_tests {
         "crv":"P-256",
         "x":"2syLh57B-dGpa0F8p1JrO6JU7UUSRG3hwpte7QHTUqs",
         "y":"BP-2bCEJBWAjfvJ4Uf6BqX_bJ_3pjOdRJl1NlPsIgNJU"
+    }
+    "#;
+
+    const ALICE_KEY_P384: &str = r#"
+    {
+        "kty":"EC",
+        "d":"ajqcWbYA0UDBKfAhkSkeiVjMMt8l-5rcknvEv9t_Os6M8s-HisdywvNCX4CGd_xY",
+        "crv":"P-384",
+        "x":"MvnE_OwKoTcJVfHyTX-DLSRhhNwlu5LNoQ5UWD9Jmgtdxp_kpjsMuTTBnxg5RF_Y",
+        "y":"X_3HJBcKFQEG35PZbEOBn8u9_z8V1F9V1Kv-Vh0aSzmH-y9aOuDJUE3D4Hvmi5l7"
     }
     "#;
 
@@ -107,6 +118,12 @@ mod debug_key_tests {
             }
         }
         assert!(result.is_ok(), "P256 key failed: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_p384_key() {
+        let result = P384KeyPair::from_jwk(ALICE_KEY_P384);
+        assert!(result.is_ok(), "P384 key failed: {:?}", result.err());
     }
 
     #[test]

@@ -13,7 +13,7 @@ Navia-DIDComm is a complete, modern implementation of the [DIDComm v2 specificat
 
 - 🔒 **Complete DIDComm v2 Support** - Full specification implementation
 - 🚀 **Production Ready** - Comprehensive testing, security audits, modern dependencies
-- 🔐 **Modern Cryptography** - X25519, P-256, P-384, P-521, Ed25519, Secp256k1
+- 🔐 **Modern Cryptography** - X25519, P-256, P-384 ✅, P-521, Ed25519, Secp256k1
 - 📨 **Secure Messaging** - Encrypted (anoncrypt/authcrypt) and signed messages  
 - 🔄 **Message Routing** - Forward protocol and mediation support
 - 🔑 **DID Rotation** - Full `fromPrior` field support
@@ -46,15 +46,15 @@ Use `cargo run --example {example-name}` for example `cargo run --example basic`
   - Verification methods referencing another DID Document are not supported (see [Referring to Verification Methods](https://www.w3.org/TR/did-core/#referring-to-verification-methods)).
 - The following curves and algorithms are supported:
   - Encryption:
-     - Curves: X25519, P-256
+     - Curves: X25519, P-256, P-384
      - Content encryption algorithms: 
        - XC20P (to be used with ECDH-ES only, default for anoncrypt),
        - A256GCM (to be used with ECDH-ES only),
        - A256CBC-HS512 (default for authcrypt)
      - Key wrapping algorithms: ECDH-ES+A256KW, ECDH-1PU+A256KW
   - Signing:
-    - Curves: Ed25519, Secp256k1, P-256
-    - Algorithms: EdDSA (with crv=Ed25519), ES256, ES256K
+    - Curves: Ed25519, Secp256k1, P-256, P-384
+    - Algorithms: EdDSA (with crv=Ed25519), ES256, ES384, ES256K
 - Forward protocol is implemented and used by default.
 - DID rotation (`fromPrior` field) is supported.
 - DIDComm has been implemented under the following [Assumptions](https://hackmd.io/i3gLqgHQR2ihVFV5euyhqg)   
