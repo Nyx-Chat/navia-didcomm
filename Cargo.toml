@@ -88,6 +88,9 @@ features = ['js']
 version = '0.3'
 features = ['async_futures']
 
+[dev-dependencies.rusty-hook]
+version = "0.11.2"
+
 [features]
 uniffi = []
 testvectors = ["lazy_static"]

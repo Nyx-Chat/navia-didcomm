@@ -19,6 +19,10 @@ Navia-DIDComm is a complete, modern implementation of the [DIDComm v2 specificat
 - 🔑 **DID Rotation** - Full `fromPrior` field support
 - ⚡ **High Performance** - Optimized for speed and low memory usage
 
+## 🔮 Future Roadmap
+
+- **Post-Quantum Cryptography** - Kyber integration planned for quantum-resistant key exchange
+
 ## 🚀 Quick Start
 
 Add to your `Cargo.toml`:
