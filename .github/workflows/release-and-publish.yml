@@ -114,38 +114,15 @@ jobs:
           draft: false
           prerelease: false
 
-      # Publish to GitHub Packages as private Rust crate
-      - name: Login to GitHub Container Registry
-        if: steps.check_tag.outputs.EXISTS == 'false'
-        run: echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-      - name: Publish to GitHub Packages
+      # Git-based distribution (private Rust crate pattern)
+      - name: Confirm Distribution Ready
         if: steps.check_tag.outputs.EXISTS == 'false'
         run: |
-          # Configure cargo to use GitHub packages registry
-          mkdir -p ~/.cargo
-          cat > ~/.cargo/config.toml << EOF
-          [registries]
-          github-packages = { index = "https://github.com/nyx-chat/navia-didcomm.git" }
-          
-          [registry]
-          default = "github-packages"
-          
-          [net]
-          git-fetch-with-cli = true
-          EOF
-          
-          # Set up authentication
-          cat > ~/.cargo/credentials << EOF
-          [registries.github-packages]
-          token = "${{ secrets.GITHUB_TOKEN }}"
-          EOF
-          
-          # Publish the crate
-          cargo publish --registry github-packages --token ${{ secrets.GITHUB_TOKEN }} || {
-            echo "GitHub Packages registry publish failed, falling back to git-based distribution"
-            echo "The crate is available via git dependency in Cargo.toml"
-          }
+          echo "✅ navia-didcomm v${{ steps.get_version.outputs.RAW_VERSION }} ready for git-based distribution"
+          echo ""
+          echo "📦 Add to Cargo.toml:"
+          echo '[dependencies]'
+          echo 'navia-didcomm = { git = "https://github.com/Nyx-Chat/navia-didcomm.git", tag = "${{ steps.get_version.outputs.VERSION }}" }'
 
       - name: Generate release artifacts
         if: steps.check_tag.outputs.EXISTS == 'false'
