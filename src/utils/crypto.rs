@@ -171,7 +171,7 @@ pub(crate) trait AsKnownKeyPair {
     }
 
     #[allow(dead_code)]
-        fn as_p384(&self) -> Result<P384KeyPair> {
+    fn as_p384(&self) -> Result<P384KeyPair> {
         if self.key_alg() != KnownKeyAlg::P384 {
             Err(err_msg(ErrorKind::InvalidState, "Unexpected key alg"))?
         }
