@@ -10,7 +10,7 @@ use crate::error::Result;
 
 /// Interface for secrets resolver.
 /// Resolves secrets such as private keys to be used for signing and encryption.
-/// 
+///
 /// This trait is `Send + Sync` to work with async runtimes and multi-threaded environments.
 #[async_trait]
 pub trait SecretsResolver: Send + Sync {

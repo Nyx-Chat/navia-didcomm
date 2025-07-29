@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use crate::{did::did_doc::DIDDoc, error::Result};
 
 /// Represents DID Doc resolver (https://www.w3.org/TR/did-core/#did-resolution).
-/// 
+///
 /// This trait is `Send + Sync` to work with async runtimes and multi-threaded environments.
 #[async_trait]
 pub trait DIDResolver: Send + Sync {
