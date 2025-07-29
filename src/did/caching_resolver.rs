@@ -40,32 +40,7 @@ impl<'r> CachingDIDResolver<'r> {
     }
 }
 
-#[cfg(feature = "uniffi")]
 #[async_trait]
-impl<'r> DIDResolver for CachingDIDResolver<'r> {
-    async fn resolve(&self, did: &str) -> Result<Option<DIDDoc>> {
-        // Check cache first
-        if let Ok(cache) = self.cache.read() {
-            if let Some(cached_result) = cache.get(did) {
-                return Ok(cached_result.clone());
-            }
-        }
-
-        // Resolve and cache the result
-        #[cfg(test)]
-        self.resolution_count.fetch_add(1, Ordering::Relaxed);
-
-        let result = self.resolver.resolve(did).await?;
-        if let Ok(mut cache) = self.cache.write() {
-            cache.insert(did.to_string(), result.clone());
-        }
-
-        Ok(result)
-    }
-}
-
-#[cfg(not(feature = "uniffi"))]
-#[async_trait(?Send)]
 impl<'r> DIDResolver for CachingDIDResolver<'r> {
     async fn resolve(&self, did: &str) -> Result<Option<DIDDoc>> {
         // Check cache first
