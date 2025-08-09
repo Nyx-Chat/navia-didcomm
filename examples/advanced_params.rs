@@ -1,5 +1,5 @@
 //! Post-Quantum Cryptography Advanced Parameters Example
-//! 
+//!
 //! Demonstrates advanced DIDComm features with PQC algorithms:
 //! - Custom encryption parameters and options
 //! - Forward headers and messaging service configuration
@@ -18,24 +18,23 @@ use std::collections::HashMap;
 async fn main() {
     println!("=================== PQC ADVANCED PARAMETERS ===================");
     advanced_encryption_options().await;
-    
+
     println!("=================== PQC ALGORITHM SELECTION ===================");
     algorithm_selection_demo().await;
-    
+
     println!("=================== PQC CUSTOM HEADERS & SERVICES ===================");
     custom_headers_and_services().await;
-    
+
     println!("=================== PQC SENDER PROTECTION ===================");
     sender_protection_demo().await;
 }
 
 async fn advanced_encryption_options() {
-    let alice_vector = PQCTestVector::ml_kem_768_ml_dsa_65()
-        .expect("Failed to create Alice vector");
-    let bob_vector = PQCTestVector::ml_kem_1024_ml_dsa_87()
-        .expect("Failed to create Bob vector");
-    let mediator_vector = PQCTestVector::ml_kem_768_ml_dsa_65()
-        .expect("Failed to create mediator vector");
+    let alice_vector =
+        PQCTestVector::ml_kem_768_ml_dsa_65().expect("Failed to create Alice vector");
+    let bob_vector = PQCTestVector::ml_kem_1024_ml_dsa_87().expect("Failed to create Bob vector");
+    let mediator_vector =
+        PQCTestVector::ml_kem_768_ml_dsa_65().expect("Failed to create mediator vector");
 
     let alice_did = &alice_vector.alice_did;
     let bob_did = &bob_vector.alice_did;
@@ -84,18 +83,18 @@ async fn advanced_encryption_options() {
     println!("\n🔒 Packing with advanced PQC encryption options...");
     let (encrypted_msg, pack_metadata) = msg
         .pack_encrypted(
-            &alice_key_agreement,           // Specific key for encryption
-            Some(&alice_authentication),    // From key (AuthCrypt)
-            Some(&alice_authentication),    // Sign-by key (non-repudiation)
+            &alice_key_agreement,        // Specific key for encryption
+            Some(&alice_authentication), // From key (AuthCrypt)
+            Some(&alice_authentication), // Sign-by key (non-repudiation)
             &did_resolver,
             &alice_secrets,
             &PackEncryptedOptions {
-                protect_sender: true,       // Enable sender protection
-                forward: true,              // Enable forwarding
+                protect_sender: true,                   // Enable sender protection
+                forward: true,                          // Enable forwarding
                 forward_headers: Some(forward_headers), // Custom forward headers
-                messaging_service: Some(bob_service), // Messaging service endpoint
-                enc_alg_auth: AuthCryptAlg::default(), // AuthCrypt algorithm
-                enc_alg_anon: AnonCryptAlg::default(),       // AnonCrypt algorithm
+                messaging_service: Some(bob_service),   // Messaging service endpoint
+                enc_alg_auth: AuthCryptAlg::default(),  // AuthCrypt algorithm
+                enc_alg_anon: AnonCryptAlg::default(),  // AnonCrypt algorithm
             },
         )
         .await
@@ -106,7 +105,10 @@ async fn advanced_encryption_options() {
     println!("   - From KID: {:?}", pack_metadata.from_kid);
     println!("   - Sign-by KID: {:?}", pack_metadata.sign_by_kid);
     println!("   - To KIDs: {:?}", pack_metadata.to_kids);
-    println!("   - Messaging service: {:?}", pack_metadata.messaging_service);
+    println!(
+        "   - Messaging service: {:?}",
+        pack_metadata.messaging_service
+    );
 
     // Bob unpacks the message
     println!("\n📨 Bob unpacking advanced message...");
@@ -125,7 +127,10 @@ async fn advanced_encryption_options() {
     println!("   - Authenticated: {}", unpack_metadata.authenticated);
     println!("   - Encrypted: {}", unpack_metadata.encrypted);
     println!("   - Non-repudiation: {}", unpack_metadata.non_repudiation);
-    println!("   - Sender protected: {}", !unpack_metadata.anonymous_sender);
+    println!(
+        "   - Sender protected: {}",
+        !unpack_metadata.anonymous_sender
+    );
 }
 
 async fn algorithm_selection_demo() {
@@ -149,14 +154,26 @@ async fn algorithm_selection_demo() {
 
     // Test different PQC algorithm combinations
     let algorithms = vec![
-        ("ML-KEM-768+A256CBC-HS512", AuthCryptAlg::MlKem768A256cbcHs512, AnonCryptAlg::MlKem768Xc20p),
-        ("ML-KEM-768+XC20P", AuthCryptAlg::MlKem768A256cbcHs512, AnonCryptAlg::MlKem768Xc20p),
-        ("ML-KEM-1024+A256CBC-HS512", AuthCryptAlg::MlKem1024A256cbcHs512, AnonCryptAlg::MlKem1024Xc20p),
+        (
+            "ML-KEM-768+A256CBC-HS512",
+            AuthCryptAlg::MlKem768A256cbcHs512,
+            AnonCryptAlg::MlKem768Xc20p,
+        ),
+        (
+            "ML-KEM-768+XC20P",
+            AuthCryptAlg::MlKem768A256cbcHs512,
+            AnonCryptAlg::MlKem768Xc20p,
+        ),
+        (
+            "ML-KEM-1024+A256CBC-HS512",
+            AuthCryptAlg::MlKem1024A256cbcHs512,
+            AnonCryptAlg::MlKem1024Xc20p,
+        ),
     ];
 
     for (name, auth_alg, anon_alg) in algorithms {
         println!("\n🔧 Testing algorithm combination: {name}");
-        
+
         let msg = Message::build(
             format!("pqc-alg-test-{}", name.replace(" ", "-").to_lowercase()),
             "https://didcomm.org/test/1.0/algorithm".to_owned(),
@@ -197,7 +214,10 @@ async fn algorithm_selection_demo() {
         .await
         .expect("Failed to unpack with custom algorithm");
 
-        println!("   ✅ {} - Success! Authenticated: {}", name, metadata.authenticated);
+        println!(
+            "   ✅ {} - Success! Authenticated: {}",
+            name, metadata.authenticated
+        );
     }
 }
 
@@ -223,13 +243,22 @@ async fn custom_headers_and_services() {
     let mut forward_headers = HashMap::new();
     forward_headers.insert("routing_priority".to_string(), json!("quantum_safe"));
     forward_headers.insert("encryption_level".to_string(), json!("maximum"));
-    forward_headers.insert("pqc_algorithms".to_string(), json!(["ML-KEM-768", "ML-DSA-65"]));
-    forward_headers.insert("quantum_resistance".to_string(), json!({
-        "kem_security": "128-bit",
-        "signature_security": "128-bit",
-        "classical_equivalent": "AES-256"
-    }));
-    forward_headers.insert("compliance".to_string(), json!(["NIST-FIPS-203", "NIST-FIPS-204"]));
+    forward_headers.insert(
+        "pqc_algorithms".to_string(),
+        json!(["ML-KEM-768", "ML-DSA-65"]),
+    );
+    forward_headers.insert(
+        "quantum_resistance".to_string(),
+        json!({
+            "kem_security": "128-bit",
+            "signature_security": "128-bit",
+            "classical_equivalent": "AES-256"
+        }),
+    );
+    forward_headers.insert(
+        "compliance".to_string(),
+        json!(["NIST-FIPS-203", "NIST-FIPS-204"]),
+    );
 
     let msg = Message::build(
         "pqc-custom-headers".to_owned(),
@@ -272,8 +301,14 @@ async fn custom_headers_and_services() {
     println!("   - Sender protected: true");
     println!("   - Custom headers: 5 items");
 
-    let (unpacked_msg, _) = Message::unpack(&encrypted_msg, &did_resolver, &bob_secrets, &UnpackOptions::default())
-        .await.expect("Failed to unpack custom message");
+    let (unpacked_msg, _) = Message::unpack(
+        &encrypted_msg,
+        &did_resolver,
+        &bob_secrets,
+        &UnpackOptions::default(),
+    )
+    .await
+    .expect("Failed to unpack custom message");
 
     println!("✅ Custom message processed successfully!");
     println!("📄 Content: {}", unpacked_msg.body);
@@ -298,16 +333,20 @@ async fn sender_protection_demo() {
     let bob_secrets = PQCTestSecretsResolver::new(bob_vector.alice_secrets.clone());
 
     // Test both protected and unprotected scenarios
-    let scenarios = vec![
-        ("Protected Sender", true),
-        ("Anonymous Sender", false),
-    ];
+    let scenarios = vec![("Protected Sender", true), ("Anonymous Sender", false)];
 
     for (name, protect_sender) in scenarios {
         println!("\n🔒 Testing scenario: {name}");
-        
+
         let msg = Message::build(
-            format!("pqc-sender-{}", if protect_sender { "protected" } else { "anonymous" }),
+            format!(
+                "pqc-sender-{}",
+                if protect_sender {
+                    "protected"
+                } else {
+                    "anonymous"
+                }
+            ),
             "https://didcomm.org/protection/1.0/test".to_owned(),
             json!({
                 "protection_type": if protect_sender { "sender_protected" } else { "anonymous" },
@@ -322,7 +361,11 @@ async fn sender_protection_demo() {
         let (encrypted_msg, pack_metadata) = msg
             .pack_encrypted(
                 bob_did,
-                if protect_sender { Some(alice_did) } else { None }, // AuthCrypt vs AnonCrypt
+                if protect_sender {
+                    Some(alice_did)
+                } else {
+                    None
+                }, // AuthCrypt vs AnonCrypt
                 None,
                 &did_resolver,
                 &alice_secrets,
@@ -344,13 +387,22 @@ async fn sender_protection_demo() {
         .expect("Failed to unpack protection test");
 
         println!("   ✅ {name}: ");
-        println!("      - Sender protected: {}", !unpack_metadata.anonymous_sender);
+        println!(
+            "      - Sender protected: {}",
+            !unpack_metadata.anonymous_sender
+        );
         println!("      - Authenticated: {}", unpack_metadata.authenticated);
         println!("      - Encrypted: {}", unpack_metadata.encrypted);
-        println!("      - From KID present: {}", pack_metadata.from_kid.is_some());
-        
+        println!(
+            "      - From KID present: {}",
+            pack_metadata.from_kid.is_some()
+        );
+
         if protect_sender {
-            println!("      - Sender identity: {:?}", unpack_metadata.encrypted_from_kid);
+            println!(
+                "      - Sender identity: {:?}",
+                unpack_metadata.encrypted_from_kid
+            );
         } else {
             println!("      - Anonymous sender confirmed");
         }
