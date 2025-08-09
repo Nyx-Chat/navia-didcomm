@@ -394,8 +394,10 @@ async fn test_pqc_algorithm_compatibility_e2e() {
     .from(vectors_1024.alice_did.clone())
     .finalize();
 
-    let mut options_1024 = PackEncryptedOptions::default();
-    options_1024.enc_alg_auth = AuthCryptAlg::MlKem1024A256cbcHs512;
+    let options_1024 = PackEncryptedOptions {
+        enc_alg_auth: AuthCryptAlg::MlKem1024A256cbcHs512,
+        ..Default::default()
+    };
 
     let (packed_1024, _) = msg_1024
         .pack_encrypted(

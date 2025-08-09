@@ -125,8 +125,10 @@ async fn pqc_repudiable_authenticated_encryption() {
 
     // Pack with encryption only (no signing - repudiable)
     // Using ML-KEM-1024 to match the test vectors
-    let mut pack_options = PackEncryptedOptions::default();
-    pack_options.enc_alg_auth = AuthCryptAlg::MlKem1024A256cbcHs512;
+    let pack_options = PackEncryptedOptions {
+        enc_alg_auth: AuthCryptAlg::MlKem1024A256cbcHs512,
+        ..Default::default()
+    };
 
     let (packed_msg, pack_metadata) = message
         .pack_encrypted(

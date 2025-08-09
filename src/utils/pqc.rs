@@ -435,15 +435,15 @@ impl MlDsa65KeyPair {
         } else if combined_key_bytes.len() == 4032 {
             // Legacy format - only private key provided
             // This is insecure as we can't properly derive the public key
-            return Err(crate::error::err_msg(
+            Err(crate::error::err_msg(
                 crate::error::ErrorKind::InvalidState,
                 "ML-DSA-65 requires both private and public key material (5984 bytes total). Cannot derive public key from private key alone.",
-            ));
+            ))
         } else {
-            return Err(crate::error::err_msg(
+            Err(crate::error::err_msg(
                 crate::error::ErrorKind::InvalidState,
                 "Invalid ML-DSA-65 key material length. Expected 5984 bytes (4032 private + 1952 public).",
-            ));
+            ))
         }
     }
 
@@ -552,15 +552,15 @@ impl MlDsa87KeyPair {
         } else if combined_key_bytes.len() == 4896 {
             // Legacy format - only private key provided
             // This is insecure as we can't properly derive the public key
-            return Err(crate::error::err_msg(
+            Err(crate::error::err_msg(
                 crate::error::ErrorKind::InvalidState,
                 "ML-DSA-87 requires both private and public key material (7488 bytes total). Cannot derive public key from private key alone.",
-            ));
+            ))
         } else {
-            return Err(crate::error::err_msg(
+            Err(crate::error::err_msg(
                 crate::error::ErrorKind::InvalidState,
                 "Invalid ML-DSA-87 key material length. Expected 7488 bytes (4896 private + 2592 public).",
-            ));
+            ))
         }
     }
 
