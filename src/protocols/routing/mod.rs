@@ -116,8 +116,7 @@ async fn resolve_did_comm_services_chain<'dr>(
             .await?
             .ok_or_else(|| {
                 err_msg(
-                    // TODO: Think on introducing a more appropriate error kind
-                    ErrorKind::InvalidState,
+                    ErrorKind::MissingRequiredField,
                     "Referenced mediator does not provide any DIDCommMessaging services",
                 )
             })?;
@@ -140,14 +139,11 @@ fn build_forward_message(
 ) -> Result<String> {
     let body = json!({ "next": next });
 
-    // TODO: Think how to avoid extra deserialization of forwarded_msg here.
-    // (This deserializtion is a double work because the whole Forward message with the attachments
-    // will then be serialized.)
-    let attachment = Attachment::json(
-        serde_json::from_str(forwarded_msg)
-            .kind(ErrorKind::Malformed, "Unable deserialize forwarded message")?,
-    )
-    .finalize();
+    // Optimize: Use base64 encoding to avoid unnecessary JSON deserialization
+    // This avoids deserializing the forwarded message just to re-serialize it later
+    use base64::prelude::*;
+    let attachment =
+        Attachment::base64(BASE64_URL_SAFE_NO_PAD.encode(forwarded_msg.as_bytes())).finalize();
 
     let mut msg_builder = Message::build(generate_message_id(), FORWARD_MSG_TYPE.to_owned(), body);
 

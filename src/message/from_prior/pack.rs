@@ -1,8 +1,8 @@
 use crate::{
     did::DIDResolver,
     error::{err_msg, ErrorKind, Result, ResultContext, ResultExt},
-    jws::{self, Algorithm},
     message::from_prior::JWT_TYP,
+    pqc_jws,
     secrets::SecretsResolver,
     utils::{
         crypto::{AsKnownKeyPair, KnownKeyPair},
@@ -114,24 +114,12 @@ impl FromPrior {
             .context("Unable to instantiate from_prior issuer key")?;
 
         let from_prior_jwt = match sign_key {
-            KnownKeyPair::Ed25519(ref key) => jws::sign_compact(
-                from_prior_str.as_bytes(),
-                (kid, key),
-                JWT_TYP,
-                Algorithm::EdDSA,
-            ),
-            KnownKeyPair::P256(ref key) => jws::sign_compact(
-                from_prior_str.as_bytes(),
-                (kid, key),
-                JWT_TYP,
-                Algorithm::Es256,
-            ),
-            KnownKeyPair::K256(ref key) => jws::sign_compact(
-                from_prior_str.as_bytes(),
-                (kid, key),
-                JWT_TYP,
-                Algorithm::Es256K,
-            ),
+            KnownKeyPair::MlDsa65(ref key) => {
+                pqc_jws::sign_ml_dsa_65_compact(from_prior_str.as_bytes(), key, JWT_TYP)
+            }
+            KnownKeyPair::MlDsa87(ref key) => {
+                pqc_jws::sign_ml_dsa_87_compact(from_prior_str.as_bytes(), key, JWT_TYP)
+            }
             _ => Err(err_msg(ErrorKind::Unsupported, "Unsupported signature alg"))?,
         }
         .context("Unable to produce signature")?;
@@ -186,190 +174,253 @@ impl FromPrior {
 #[cfg(test)]
 mod tests {
     use crate::{
-        did::resolvers::ExampleDIDResolver,
         error::ErrorKind,
-        secrets::resolvers::ExampleSecretsResolver,
-        test_vectors::{
-            ALICE_DID, ALICE_DID_DOC, ALICE_SECRETS, ALICE_SECRET_AUTH_KEY_ED25519, CHARLIE_DID,
-            CHARLIE_DID_DOC, CHARLIE_ROTATED_TO_ALICE_SECRETS, CHARLIE_SECRET_AUTH_KEY_ED25519,
-            FROM_PRIOR_FULL, FROM_PRIOR_INVALID_EQUAL_ISS_AND_SUB, FROM_PRIOR_INVALID_ISS,
-            FROM_PRIOR_INVALID_ISS_DID_URL, FROM_PRIOR_INVALID_SUB, FROM_PRIOR_INVALID_SUB_DID_URL,
-            FROM_PRIOR_MINIMAL,
-        },
+        test_vectors::{PQCTestDIDResolver, PQCTestSecretsResolver, PQCTestVector},
         utils::did::did_or_url,
         FromPrior,
     };
 
     #[tokio::test]
-    async fn from_prior_pack_works_with_issuer_kid() {
-        _from_prior_pack_works_with_issuer_kid(&FROM_PRIOR_MINIMAL).await;
-        _from_prior_pack_works_with_issuer_kid(&FROM_PRIOR_FULL).await;
+    async fn test_pqc_from_prior_pack_works_with_issuer_kid() {
+        let vectors = PQCTestVector::ml_kem_768_ml_dsa_65().expect("Failed to create test vectors");
 
-        async fn _from_prior_pack_works_with_issuer_kid(from_prior: &FromPrior) {
-            let did_resolver =
-                ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), CHARLIE_DID_DOC.clone()]);
-            let charlie_rotated_to_alice_secrets_resolver =
-                ExampleSecretsResolver::new(CHARLIE_ROTATED_TO_ALICE_SECRETS.clone());
+        let mut did_resolver = PQCTestDIDResolver::new();
+        did_resolver.add_did_doc(vectors.alice_did.clone(), vectors.alice_did_doc.clone());
+        did_resolver.add_did_doc(vectors.bob_did.clone(), vectors.bob_did_doc.clone());
 
-            let (from_prior_jwt, pack_kid) = from_prior
-                .pack(
-                    Some(&CHARLIE_SECRET_AUTH_KEY_ED25519.id),
-                    &did_resolver,
-                    &charlie_rotated_to_alice_secrets_resolver,
-                )
-                .await
-                .expect("Unable to pack FromPrior");
+        let alice_secrets = PQCTestSecretsResolver::new(vectors.alice_secrets.clone());
 
-            assert_eq!(pack_kid, CHARLIE_SECRET_AUTH_KEY_ED25519.id);
+        // Create a from_prior message for DID rotation (Alice -> Bob)
+        let from_prior = FromPrior {
+            iss: vectors.alice_did.clone(),
+            sub: vectors.bob_did.clone(),
+            aud: None,
+            exp: None,
+            nbf: None,
+            iat: Some(1640995200), // 2022-01-01 00:00:00
+            jti: None,
+        };
 
-            let (unpacked_from_prior, unpack_kid) =
-                FromPrior::unpack(&from_prior_jwt, &did_resolver)
-                    .await
-                    .expect("Unable to unpack FromPrior JWT");
+        let alice_auth_kid = format!("{}#authentication-1", vectors.alice_did);
 
-            assert_eq!(&unpacked_from_prior, from_prior);
-            assert_eq!(unpack_kid, CHARLIE_SECRET_AUTH_KEY_ED25519.id);
-        }
+        let (from_prior_jwt, pack_kid) = from_prior
+            .pack(Some(&alice_auth_kid), &did_resolver, &alice_secrets)
+            .await
+            .expect("Unable to pack FromPrior with PQC");
+
+        assert_eq!(pack_kid, alice_auth_kid);
+
+        let (unpacked_from_prior, unpack_kid) = FromPrior::unpack(&from_prior_jwt, &did_resolver)
+            .await
+            .expect("Unable to unpack FromPrior JWT with PQC");
+
+        assert_eq!(&unpacked_from_prior, &from_prior);
+        assert_eq!(unpack_kid, alice_auth_kid);
     }
 
     #[tokio::test]
-    async fn from_prior_pack_works_without_issuer_kid() {
-        _from_prior_pack_works_without_issuer_kid(&FROM_PRIOR_MINIMAL).await;
-        _from_prior_pack_works_without_issuer_kid(&FROM_PRIOR_FULL).await;
+    async fn test_pqc_from_prior_pack_works_without_issuer_kid() {
+        let vectors = PQCTestVector::ml_kem_768_ml_dsa_65().expect("Failed to create test vectors");
 
-        async fn _from_prior_pack_works_without_issuer_kid(from_prior: &FromPrior) {
-            let did_resolver =
-                ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), CHARLIE_DID_DOC.clone()]);
-            let charlie_rotated_to_alice_secrets_resolver =
-                ExampleSecretsResolver::new(CHARLIE_ROTATED_TO_ALICE_SECRETS.clone());
+        let mut did_resolver = PQCTestDIDResolver::new();
+        did_resolver.add_did_doc(vectors.alice_did.clone(), vectors.alice_did_doc.clone());
+        did_resolver.add_did_doc(vectors.bob_did.clone(), vectors.bob_did_doc.clone());
 
-            let (from_prior_jwt, pack_kid) = from_prior
-                .pack(
-                    None,
-                    &did_resolver,
-                    &charlie_rotated_to_alice_secrets_resolver,
-                )
-                .await
-                .expect("Unable to pack FromPrior");
+        let alice_secrets = PQCTestSecretsResolver::new(vectors.alice_secrets.clone());
 
-            let (did, kid) = did_or_url(&pack_kid);
-            assert!(kid.is_some());
-            assert_eq!(did, CHARLIE_DID);
+        // Create a from_prior message for DID rotation (Alice -> Bob)
+        let from_prior = FromPrior {
+            iss: vectors.alice_did.clone(),
+            sub: vectors.bob_did.clone(),
+            aud: None,
+            exp: None,
+            nbf: None,
+            iat: Some(1640995200), // 2022-01-01 00:00:00
+            jti: None,
+        };
 
-            let (unpacked_from_prior, unpack_kid) =
-                FromPrior::unpack(&from_prior_jwt, &did_resolver)
-                    .await
-                    .expect("Unable to unpack FromPrior JWT");
+        let (from_prior_jwt, pack_kid) = from_prior
+            .pack(
+                None, // No specific issuer kid - should pick first available
+                &did_resolver,
+                &alice_secrets,
+            )
+            .await
+            .expect("Unable to pack FromPrior without specific kid");
 
-            assert_eq!(&unpacked_from_prior, from_prior);
-            assert_eq!(unpack_kid, pack_kid);
-        }
+        let (did, kid) = did_or_url(&pack_kid);
+        assert!(kid.is_some());
+        assert_eq!(did, vectors.alice_did);
+
+        let (unpacked_from_prior, unpack_kid) = FromPrior::unpack(&from_prior_jwt, &did_resolver)
+            .await
+            .expect("Unable to unpack FromPrior JWT");
+
+        assert_eq!(&unpacked_from_prior, &from_prior);
+        assert_eq!(unpack_kid, pack_kid);
     }
 
     #[tokio::test]
-    async fn from_prior_pack_works_wrong_issuer_kid() {
-        _from_prior_pack_works_wrong_issuer_kid(
-            &FROM_PRIOR_FULL,
-            &ALICE_SECRET_AUTH_KEY_ED25519.id,
-            ErrorKind::IllegalArgument,
-            "Illegal argument provided: from_prior issuer kid does not belong to from_prior `iss`",
-        )
-        .await;
+    async fn test_pqc_from_prior_pack_wrong_issuer_kid() {
+        let vectors = PQCTestVector::ml_kem_768_ml_dsa_65().expect("Failed to create test vectors");
 
-        _from_prior_pack_works_wrong_issuer_kid(
-            &FROM_PRIOR_FULL,
-            ALICE_DID,
-            ErrorKind::IllegalArgument,
-            "Illegal argument provided: issuer_kid content is not DID URL",
-        )
-        .await;
+        let mut did_resolver = PQCTestDIDResolver::new();
+        did_resolver.add_did_doc(vectors.alice_did.clone(), vectors.alice_did_doc.clone());
+        did_resolver.add_did_doc(vectors.bob_did.clone(), vectors.bob_did_doc.clone());
 
-        _from_prior_pack_works_wrong_issuer_kid(
-            &FROM_PRIOR_FULL,
-            "invalid",
-            ErrorKind::IllegalArgument,
-            "Illegal argument provided: issuer_kid content is not DID URL",
-        )
-        .await;
+        let alice_secrets = PQCTestSecretsResolver::new(vectors.alice_secrets.clone());
 
-        async fn _from_prior_pack_works_wrong_issuer_kid(
-            from_prior: &FromPrior,
-            issuer_kid: &str,
-            err_kind: ErrorKind,
-            err_mgs: &str,
-        ) {
-            let did_resolver =
-                ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), CHARLIE_DID_DOC.clone()]);
-            let alice_secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+        // Create a from_prior message for DID rotation (Alice -> Bob)
+        let from_prior = FromPrior {
+            iss: vectors.alice_did.clone(),
+            sub: vectors.bob_did.clone(),
+            aud: None,
+            exp: None,
+            nbf: None,
+            iat: Some(1640995200),
+            jti: None,
+        };
 
-            let err = from_prior
-                .pack(Some(issuer_kid), &did_resolver, &alice_secrets_resolver)
-                .await
-                .expect_err("res is ok");
+        // Test with wrong issuer kid (Bob's key for Alice's iss)
+        let bob_auth_kid = format!("{}#authentication-1", vectors.bob_did);
+        let err = from_prior
+            .pack(Some(&bob_auth_kid), &did_resolver, &alice_secrets)
+            .await
+            .expect_err("Should fail with wrong issuer kid");
 
-            assert_eq!(err.kind(), err_kind);
-            assert_eq!(format!("{err}"), err_mgs);
-        }
+        assert_eq!(err.kind(), ErrorKind::IllegalArgument);
+        assert!(
+            format!("{err}").contains("from_prior issuer kid does not belong to from_prior `iss`")
+        );
+
+        // Test with non-DID URL
+        let err = from_prior
+            .pack(Some(&vectors.alice_did), &did_resolver, &alice_secrets)
+            .await
+            .expect_err("Should fail with non-DID URL");
+
+        assert_eq!(err.kind(), ErrorKind::IllegalArgument);
+        assert!(format!("{err}").contains("issuer_kid content is not DID URL"));
+
+        // Test with invalid string
+        let err = from_prior
+            .pack(Some("invalid"), &did_resolver, &alice_secrets)
+            .await
+            .expect_err("Should fail with invalid string");
+
+        assert_eq!(err.kind(), ErrorKind::IllegalArgument);
+        assert!(format!("{err}").contains("issuer_kid content is not DID URL"));
     }
 
     #[tokio::test]
-    async fn from_prior_pack_works_invalid() {
-        _from_prior_pack_works_invalid(
-            &FROM_PRIOR_INVALID_ISS,
-            ErrorKind::Malformed,
-            "Message malformed or invalid: from_prior `iss` must be a non-fragment DID",
-        )
-        .await;
+    async fn test_pqc_from_prior_pack_invalid_inputs() {
+        let vectors = PQCTestVector::ml_kem_768_ml_dsa_65().expect("Failed to create test vectors");
 
-        _from_prior_pack_works_invalid(
-            &FROM_PRIOR_INVALID_ISS_DID_URL,
-            ErrorKind::Malformed,
-            "Message malformed or invalid: from_prior `iss` must be a non-fragment DID",
-        )
-        .await;
+        let mut did_resolver = PQCTestDIDResolver::new();
+        did_resolver.add_did_doc(vectors.alice_did.clone(), vectors.alice_did_doc.clone());
+        did_resolver.add_did_doc(vectors.bob_did.clone(), vectors.bob_did_doc.clone());
 
-        _from_prior_pack_works_invalid(
-            &FROM_PRIOR_INVALID_SUB,
-            ErrorKind::Malformed,
-            "Message malformed or invalid: from_prior `sub` must be a non-fragment DID",
-        )
-        .await;
+        let alice_secrets = PQCTestSecretsResolver::new(vectors.alice_secrets.clone());
 
-        _from_prior_pack_works_invalid(
-            &FROM_PRIOR_INVALID_SUB_DID_URL,
-            ErrorKind::Malformed,
-            "Message malformed or invalid: from_prior `sub` must be a non-fragment DID",
-        )
-        .await;
+        // Test invalid iss (not a DID)
+        let invalid_iss_from_prior = FromPrior {
+            iss: "invalid-not-a-did".to_string(),
+            sub: vectors.bob_did.clone(),
+            aud: None,
+            exp: None,
+            nbf: None,
+            iat: Some(1640995200),
+            jti: None,
+        };
 
-        _from_prior_pack_works_invalid(
-            &FROM_PRIOR_INVALID_EQUAL_ISS_AND_SUB,
-            ErrorKind::Malformed,
-            "Message malformed or invalid: from_prior `iss` and `sub` values must not be equal",
-        )
-        .await;
+        let err = invalid_iss_from_prior
+            .pack(None, &did_resolver, &alice_secrets)
+            .await
+            .expect_err("Should fail with invalid iss");
 
-        async fn _from_prior_pack_works_invalid(
-            from_prior: &FromPrior,
-            err_kind: ErrorKind,
-            err_mgs: &str,
-        ) {
-            let did_resolver =
-                ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), CHARLIE_DID_DOC.clone()]);
-            let charlie_rotated_to_alice_secrets_resolver =
-                ExampleSecretsResolver::new(CHARLIE_ROTATED_TO_ALICE_SECRETS.clone());
+        assert_eq!(err.kind(), ErrorKind::Malformed);
+        assert!(format!("{err}").contains("from_prior `iss` must be a non-fragment DID"));
 
-            let err = from_prior
-                .pack(
-                    None,
-                    &did_resolver,
-                    &charlie_rotated_to_alice_secrets_resolver,
-                )
-                .await
-                .expect_err("res is ok");
+        // Test invalid sub (not a DID)
+        let invalid_sub_from_prior = FromPrior {
+            iss: vectors.alice_did.clone(),
+            sub: "invalid-not-a-did".to_string(),
+            aud: None,
+            exp: None,
+            nbf: None,
+            iat: Some(1640995200),
+            jti: None,
+        };
 
-            assert_eq!(err.kind(), err_kind);
-            assert_eq!(format!("{err}"), err_mgs);
-        }
+        let err = invalid_sub_from_prior
+            .pack(None, &did_resolver, &alice_secrets)
+            .await
+            .expect_err("Should fail with invalid sub");
+
+        assert_eq!(err.kind(), ErrorKind::Malformed);
+        assert!(format!("{err}").contains("from_prior `sub` must be a non-fragment DID"));
+
+        // Test equal iss and sub
+        let equal_iss_sub_from_prior = FromPrior {
+            iss: vectors.alice_did.clone(),
+            sub: vectors.alice_did.clone(), // Same as iss
+            aud: None,
+            exp: None,
+            nbf: None,
+            iat: Some(1640995200),
+            jti: None,
+        };
+
+        let err = equal_iss_sub_from_prior
+            .pack(None, &did_resolver, &alice_secrets)
+            .await
+            .expect_err("Should fail with equal iss and sub");
+
+        assert_eq!(err.kind(), ErrorKind::Malformed);
+        assert!(format!("{err}").contains("from_prior `iss` and `sub` values must not be equal"));
+    }
+
+    #[tokio::test]
+    async fn test_pqc_from_prior_ml_kem_1024_ml_dsa_87() {
+        let vectors = PQCTestVector::ml_kem_1024_ml_dsa_87()
+            .expect("Failed to create ML-KEM-1024 test vectors");
+
+        let mut did_resolver = PQCTestDIDResolver::new();
+        did_resolver.add_did_doc(vectors.alice_did.clone(), vectors.alice_did_doc.clone());
+        did_resolver.add_did_doc(vectors.bob_did.clone(), vectors.bob_did_doc.clone());
+
+        let alice_secrets = PQCTestSecretsResolver::new(vectors.alice_secrets.clone());
+
+        // Create a from_prior message for DID rotation using ML-DSA-87
+        let from_prior = FromPrior {
+            iss: vectors.alice_did.clone(),
+            sub: vectors.bob_did.clone(),
+            aud: Some("test-audience".to_string()),
+            exp: Some(1672531200), // 2023-01-01 00:00:00
+            nbf: Some(1640995200), // 2022-01-01 00:00:00
+            iat: Some(1640995200),
+            jti: Some("test-jti-123".to_string()),
+        };
+
+        let (from_prior_jwt, pack_kid) = from_prior
+            .pack(None, &did_resolver, &alice_secrets)
+            .await
+            .expect("Unable to pack FromPrior with ML-DSA-87");
+
+        // Verify it uses ML-DSA-87 key
+        assert!(pack_kid.contains("authentication-1"));
+
+        let (unpacked_from_prior, unpack_kid) = FromPrior::unpack(&from_prior_jwt, &did_resolver)
+            .await
+            .expect("Unable to unpack FromPrior JWT with ML-DSA-87");
+
+        assert_eq!(&unpacked_from_prior, &from_prior);
+        assert_eq!(unpack_kid, pack_kid);
+
+        // Verify all optional fields are preserved
+        assert_eq!(unpacked_from_prior.aud, Some("test-audience".to_string()));
+        assert_eq!(unpacked_from_prior.exp, Some(1672531200));
+        assert_eq!(unpacked_from_prior.nbf, Some(1640995200));
+        assert_eq!(unpacked_from_prior.jti, Some("test-jti-123".to_string()));
     }
 }

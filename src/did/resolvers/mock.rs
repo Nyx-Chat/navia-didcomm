@@ -9,6 +9,7 @@ pub struct MockDidResolver {
 }
 
 impl MockDidResolver {
+    #[allow(dead_code)]
     pub fn new(res: Vec<crate::error::Result<Option<DIDDoc>>>) -> Self {
         Self {
             results: Mutex::new(RefCell::new(res)),

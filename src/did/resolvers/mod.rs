@@ -5,5 +5,5 @@ mod mock;
 
 pub use example::ExampleDIDResolver;
 
-#[cfg(test)]
-pub(crate) use mock::MockDidResolver;
+// #[cfg(test)]
+// pub(crate) use mock::MockDidResolver; // Unused import removed

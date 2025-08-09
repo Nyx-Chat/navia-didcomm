@@ -53,15 +53,22 @@ pub struct Secret {
     pub secret_material: SecretMaterial,
 }
 
-/// Must have the same semantics as type ('type' field) of the corresponding method in DID Doc containing a public key.
+/// Secret types for DIDComm keys (PQC-only with legacy test support).
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum SecretType {
+    #[serde(rename = "MlKem768KeyAgreementKey2025")]
+    MlKem768KeyAgreementKey2025,
+    #[serde(rename = "MlKem1024KeyAgreementKey2025")]
+    MlKem1024KeyAgreementKey2025,
+    #[serde(rename = "MlDsa65VerificationKey2025")]
+    MlDsa65VerificationKey2025,
+    #[serde(rename = "MlDsa87VerificationKey2025")]
+    MlDsa87VerificationKey2025,
+
+    // Legacy support for test vectors (non-functional, PQC-only in production)
+    #[serde(rename = "JsonWebKey2020")]
     JsonWebKey2020,
-    X25519KeyAgreementKey2019,
-    X25519KeyAgreementKey2020,
-    Ed25519VerificationKey2018,
-    Ed25519VerificationKey2020,
-    EcdsaSecp256k1VerificationKey2019,
+
     Other,
 }
 

@@ -1,18 +1,15 @@
-use askar_crypto::{
-    alg::{
-        aes::{A256CbcHs512, A256Gcm, A256Kw, AesKey},
-        chacha20::{Chacha20Key, XC20P},
-        p256::P256KeyPair,
-        x25519::X25519KeyPair,
-    },
-    kdf::ecdh_es::EcdhEs,
+use askar_crypto::alg::{
+    aes::{A256Gcm, AesKey},
+    chacha20::{Chacha20Key, XC20P},
 };
+
+use crate::pqc_jwe;
 
 use crate::{
     algorithms::AnonCryptAlg,
     did::DIDResolver,
-    error::{err_msg, ErrorKind, Result, ResultContext},
-    jwe,
+    error::{err_msg, ErrorKind, Result, ResultContext, ResultExt},
+    pqc_jwe as jwe,
     utils::{
         crypto::{AsKnownKeyPair, KnownKeyAlg},
         did::did_or_url,
@@ -87,118 +84,83 @@ pub(crate) async fn anoncrypt<'dr, 'sr>(
         .filter(|key| key.key_alg() == key_alg)
         .collect();
 
-    let msg = match key_alg {
-        KnownKeyAlg::X25519 => {
-            let _to_keys = to_keys
-                .iter()
-                .map(|vm| vm.as_x25519().map(|k| (&vm.id, k)))
-                .collect::<Result<Vec<_>>>()?;
+    let msg =
+        match key_alg {
+            KnownKeyAlg::MlKem768 => {
+                let _to_keys = to_keys
+                    .iter()
+                    .map(|vm| vm.as_ml_kem_768().map(|k| (&vm.id, k.public_key())))
+                    .collect::<Result<Vec<_>>>()?;
 
-            let to_keys: Vec<_> = _to_keys
-                .iter()
-                .map(|(id, key)| (id.as_str(), key))
-                .collect();
+                let to_keys: Vec<_> = _to_keys
+                    .iter()
+                    .map(|(id, key)| (id.as_str(), key))
+                    .collect();
 
-            match enc_alg_anon {
-                AnonCryptAlg::A256cbcHs512EcdhEsA256kw => jwe::encrypt::<
-                    AesKey<A256CbcHs512>,
-                    EcdhEs<'_, X25519KeyPair>,
-                    X25519KeyPair,
-                    AesKey<A256Kw>,
-                >(
-                    msg,
-                    jwe::Algorithm::EcdhEsA256kw,
-                    jwe::EncAlgorithm::A256cbcHs512,
-                    None,
-                    &to_keys,
-                )
-                .context("Unable produce anoncrypt envelope")?,
-                AnonCryptAlg::Xc20pEcdhEsA256kw => jwe::encrypt::<
-                    Chacha20Key<XC20P>,
-                    EcdhEs<'_, X25519KeyPair>,
-                    X25519KeyPair,
-                    AesKey<A256Kw>,
-                >(
-                    msg,
-                    jwe::Algorithm::EcdhEsA256kw,
-                    jwe::EncAlgorithm::Xc20P,
-                    None,
-                    &to_keys,
-                )
-                .context("Unable produce anoncrypt envelope")?,
-                AnonCryptAlg::A256gcmEcdhEsA256kw => jwe::encrypt::<
-                    AesKey<A256Gcm>,
-                    EcdhEs<'_, X25519KeyPair>,
-                    X25519KeyPair,
-                    AesKey<A256Kw>,
-                >(
-                    msg,
-                    jwe::Algorithm::EcdhEsA256kw,
-                    jwe::EncAlgorithm::A256Gcm,
-                    None,
-                    &to_keys,
-                )
-                .context("Unable produce anoncrypt envelope")?,
+                match enc_alg_anon {
+                    AnonCryptAlg::MlKem768Xc20p => pqc_jwe::encrypt_anon_ml_kem_768::<
+                        Chacha20Key<XC20P>,
+                    >(
+                        msg, jwe::EncAlgorithm::Xc20P, &to_keys
+                    )
+                    .context("Unable produce ML-KEM-768 + XC20P anoncrypt envelope")?,
+
+                    AnonCryptAlg::MlKem768A256gcm => pqc_jwe::encrypt_anon_ml_kem_768::<
+                        AesKey<A256Gcm>,
+                    >(
+                        msg, jwe::EncAlgorithm::A256Gcm, &to_keys
+                    )
+                    .context("Unable produce ML-KEM-768 + A256GCM anoncrypt envelope")?,
+
+                    _ => {
+                        return Err(err_msg(
+                            ErrorKind::InvalidState,
+                            "ML-KEM-768 keys require ML-KEM-768 compatible algorithms",
+                        ));
+                    }
+                }
             }
-        }
-        KnownKeyAlg::P256 => {
-            let _to_keys = to_keys
-                .iter()
-                .map(|vm| vm.as_p256().map(|k| (&vm.id, k)))
-                .collect::<Result<Vec<_>>>()?;
+            KnownKeyAlg::MlKem1024 => {
+                let _to_keys = to_keys
+                    .iter()
+                    .map(|vm| vm.as_ml_kem_1024().map(|k| (&vm.id, k.public_key())))
+                    .collect::<Result<Vec<_>>>()?;
 
-            let to_keys: Vec<_> = _to_keys
-                .iter()
-                .map(|(id, key)| (id.as_str(), key))
-                .collect();
+                let to_keys: Vec<_> = _to_keys
+                    .iter()
+                    .map(|(id, key)| (id.as_str(), key))
+                    .collect();
 
-            match enc_alg_anon {
-                AnonCryptAlg::A256cbcHs512EcdhEsA256kw => jwe::encrypt::<
-                    AesKey<A256CbcHs512>,
-                    EcdhEs<'_, P256KeyPair>,
-                    P256KeyPair,
-                    AesKey<A256Kw>,
-                >(
-                    msg,
-                    jwe::Algorithm::EcdhEsA256kw,
-                    jwe::EncAlgorithm::A256cbcHs512,
-                    None,
-                    &to_keys,
-                )
-                .context("Unable produce anoncrypt envelope")?,
-                AnonCryptAlg::Xc20pEcdhEsA256kw => jwe::encrypt::<
-                    Chacha20Key<XC20P>,
-                    EcdhEs<'_, P256KeyPair>,
-                    P256KeyPair,
-                    AesKey<A256Kw>,
-                >(
-                    msg,
-                    jwe::Algorithm::EcdhEsA256kw,
-                    jwe::EncAlgorithm::Xc20P,
-                    None,
-                    &to_keys,
-                )
-                .context("Unable produce anoncrypt envelope")?,
-                AnonCryptAlg::A256gcmEcdhEsA256kw => jwe::encrypt::<
-                    AesKey<A256Gcm>,
-                    EcdhEs<'_, P256KeyPair>,
-                    P256KeyPair,
-                    AesKey<A256Kw>,
-                >(
-                    msg,
-                    jwe::Algorithm::EcdhEsA256kw,
-                    jwe::EncAlgorithm::A256Gcm,
-                    None,
-                    &to_keys,
-                )
-                .context("Unable produce anoncrypt envelope")?,
+                match enc_alg_anon {
+                    AnonCryptAlg::MlKem1024Xc20p => pqc_jwe::encrypt_anon_ml_kem_1024::<
+                        Chacha20Key<XC20P>,
+                    >(
+                        msg, jwe::EncAlgorithm::Xc20P, &to_keys
+                    )
+                    .kind(
+                        ErrorKind::InvalidState,
+                        "Unable produce ML-KEM-1024 + XC20P anoncrypt envelope",
+                    )?,
+
+                    AnonCryptAlg::MlKem1024A256gcm => pqc_jwe::encrypt_anon_ml_kem_1024::<
+                        AesKey<A256Gcm>,
+                    >(
+                        msg, jwe::EncAlgorithm::A256Gcm, &to_keys
+                    )
+                    .kind(
+                        ErrorKind::InvalidState,
+                        "Unable produce ML-KEM-1024 + A256GCM anoncrypt envelope",
+                    )?,
+
+                    _ => Err(err_msg(ErrorKind::InvalidState, "Unsupported algorithm"))?,
+                }
             }
-        }
-        _ => Err(err_msg(
-            ErrorKind::InvalidState,
-            "Unsupported recipient key agreement alg",
-        ))?,
-    };
+
+            _ => Err(err_msg(
+                ErrorKind::InvalidState,
+                "Unsupported recipient key agreement alg",
+            ))?,
+        };
 
     let to_kids: Vec<_> = to_keys.into_iter().map(|vm| vm.id.clone()).collect();
     Ok((msg, to_kids))

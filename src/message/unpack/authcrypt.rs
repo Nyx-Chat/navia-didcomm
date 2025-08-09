@@ -1,18 +1,8 @@
-use askar_crypto::{
-    alg::{
-        aes::{A256CbcHs512, A256Kw, AesKey},
-        p256::P256KeyPair,
-        x25519::X25519KeyPair,
-    },
-    kdf::ecdh_1pu::Ecdh1PU,
-};
-
-use crate::jwe::envelope::JWE;
+use crate::pqc_jwe::{Algorithm as JweAlgorithm, EncAlgorithm, JWE};
 use crate::{
     algorithms::AuthCryptAlg,
     did::DIDResolver,
     error::{err_msg, ErrorKind, Result, ResultExt},
-    jwe,
     secrets::SecretsResolver,
     utils::{
         crypto::{AsKnownKeyPair, KnownKeyPair},
@@ -37,8 +27,12 @@ pub(crate) async fn _try_unpack_authcrypt<'dr, 'sr>(
     let mut buf = vec![];
     let parsed_jwe = jwe.parse(&mut buf)?;
 
-    if parsed_jwe.protected.alg != jwe::Algorithm::Ecdh1puA256kw {
-        return Ok(None);
+    // Only support PQC algorithms (ML-KEM + ML-DSA) - reject classical crypto
+    match parsed_jwe.protected.alg {
+        JweAlgorithm::MlKem768MlDsa65 | JweAlgorithm::MlKem1024MlDsa87 => {
+            // PQC authcrypt - continue processing
+        }
+        _ => return Ok(None),
     }
 
     let parsed_jwe = parsed_jwe.verify_didcomm()?;
@@ -66,29 +60,39 @@ pub(crate) async fn _try_unpack_authcrypt<'dr, 'sr>(
         .kind(ErrorKind::InvalidState, "Unable resolve sender did")?
         .ok_or_else(|| err_msg(ErrorKind::DIDNotResolved, "Sender did not found"))?;
 
-    let from_kid = from_ddoc
+    // For AuthCrypt, the from_kid in APU is the sender's key agreement key
+    // But we need the sender's authentication (signing) key for verification
+    let _from_kem_kid = from_ddoc
         .key_agreement
         .iter()
         .find(|&k| k.as_str() == from_kid)
-        .ok_or_else(|| err_msg(ErrorKind::DIDUrlNotFound, "Sender kid not found in did"))?;
+        .ok_or_else(|| err_msg(ErrorKind::DIDUrlNotFound, "Sender KEM kid not found in did"))?;
+
+    // Get the sender's authentication (ML-DSA signing) key
+    let from_auth_kid = from_ddoc.authentication.first().ok_or_else(|| {
+        err_msg(
+            ErrorKind::DIDUrlNotFound,
+            "No authentication key found in sender DID doc",
+        )
+    })?;
 
     let from_key = from_ddoc
         .verification_method
         .iter()
-        .find(|&vm| &vm.id == from_kid)
+        .find(|&vm| &vm.id == from_auth_kid)
         .ok_or_else(|| {
             err_msg(
                 ErrorKind::DIDUrlNotFound,
-                "Sender verification method not found in did",
+                "Sender authentication verification method not found in did",
             )
         })?
         .as_key_pair()?;
 
-    let to_kids: Vec<_> = parsed_jwe
+    let to_kids: Vec<&str> = parsed_jwe
         .jwe
         .recipients
         .iter()
-        .map(|r| r.header.kid)
+        .map(|r| &*r.header.kid)
         .collect();
 
     let to_kid = to_kids
@@ -111,7 +115,21 @@ pub(crate) async fn _try_unpack_authcrypt<'dr, 'sr>(
     if metadata.encrypted_to_kids.is_none() {
         metadata.encrypted_to_kids = Some(to_kids.iter().map(|&k| k.to_owned()).collect());
     } else {
-        // TODO: Verify that same keys used for authcrypt as for anoncrypt envelope
+        // Verify that same keys used for authcrypt as for anoncrypt envelope
+        let existing_kids: std::collections::HashSet<&str> = metadata
+            .encrypted_to_kids
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        let new_kids: std::collections::HashSet<&str> = to_kids.iter().copied().collect();
+        if existing_kids != new_kids {
+            return Err(err_msg(
+                ErrorKind::InvalidState,
+                "Key mismatch between anoncrypt and authcrypt envelopes",
+            ));
+        }
     }
 
     metadata.authenticated = true;
@@ -143,41 +161,91 @@ pub(crate) async fn _try_unpack_authcrypt<'dr, 'sr>(
 
         let _payload = match (&from_key, &to_key, &parsed_jwe.protected.enc) {
             (
-                KnownKeyPair::X25519(ref from_key),
-                KnownKeyPair::X25519(ref to_key),
-                jwe::EncAlgorithm::A256cbcHs512,
+                KnownKeyPair::MlDsa65(ref from_dsa_key),
+                KnownKeyPair::MlKem768(ref to_key),
+                EncAlgorithm::A256Gcm,
             ) => {
-                metadata.enc_alg_auth = Some(AuthCryptAlg::A256cbcHs512Ecdh1puA256kw);
+                metadata.enc_alg_auth = Some(AuthCryptAlg::MlKem768A256cbcHs512);
 
-                parsed_jwe.decrypt::<
-                    AesKey<A256CbcHs512>,
-                    Ecdh1PU<'_, X25519KeyPair>,
-                    X25519KeyPair,
-                    AesKey<A256Kw>,
-                >(Some((from_kid, from_key)), (to_kid, to_key))?
+                use crate::pqc_jwe::decrypt_auth_ml_kem_768_dsa_65;
+                use askar_crypto::alg::aes::{A256Gcm, AesKey};
+                use base64::prelude::*;
+
+                let recipient = parsed_jwe
+                    .jwe
+                    .recipients
+                    .iter()
+                    .find(|r| &*r.header.kid == to_kid)
+                    .ok_or_else(|| err_msg(ErrorKind::Malformed, "Recipient not found"))?;
+
+                let encrypted_key = BASE64_URL_SAFE_NO_PAD
+                    .decode(&recipient.encrypted_key)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in encrypted_key")?;
+                let iv = BASE64_URL_SAFE_NO_PAD
+                    .decode(&parsed_jwe.jwe.iv)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in iv")?;
+                let ciphertext = BASE64_URL_SAFE_NO_PAD
+                    .decode(&parsed_jwe.jwe.ciphertext)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in ciphertext")?;
+                let tag = BASE64_URL_SAFE_NO_PAD
+                    .decode(&parsed_jwe.jwe.tag)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in tag")?;
+
+                decrypt_auth_ml_kem_768_dsa_65::<AesKey<A256Gcm>>(
+                    &encrypted_key,
+                    &iv,
+                    &ciphertext,
+                    &tag,
+                    &parsed_jwe.jwe.protected,
+                    from_kid, // This is the sender's KEM kid from APU (used in signing)
+                    to_kid,
+                    from_dsa_key.public_key(), // This is the sender's DSA public key
+                    to_key,
+                )?
             }
             (
-                KnownKeyPair::P256(ref from_key),
-                KnownKeyPair::P256(ref to_key),
-                jwe::EncAlgorithm::A256cbcHs512,
+                KnownKeyPair::MlDsa87(ref from_dsa_key),
+                KnownKeyPair::MlKem1024(ref to_key),
+                EncAlgorithm::A256Gcm,
             ) => {
-                metadata.enc_alg_auth = Some(AuthCryptAlg::A256cbcHs512Ecdh1puA256kw);
+                metadata.enc_alg_auth = Some(AuthCryptAlg::MlKem1024A256cbcHs512);
 
-                parsed_jwe.decrypt::<
-                    AesKey<A256CbcHs512>,
-                    Ecdh1PU<'_, P256KeyPair>,
-                    P256KeyPair,
-                    AesKey<A256Kw>,
-                >(Some((from_kid, from_key)), (to_kid, to_key))?
+                use crate::pqc_jwe::decrypt_auth_ml_kem_1024_dsa_87;
+                use askar_crypto::alg::aes::{A256Gcm, AesKey};
+                use base64::prelude::*;
+
+                let recipient = parsed_jwe
+                    .jwe
+                    .recipients
+                    .iter()
+                    .find(|r| &*r.header.kid == to_kid)
+                    .ok_or_else(|| err_msg(ErrorKind::Malformed, "Recipient not found"))?;
+
+                let encrypted_key = BASE64_URL_SAFE_NO_PAD
+                    .decode(&recipient.encrypted_key)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in encrypted_key")?;
+                let iv = BASE64_URL_SAFE_NO_PAD
+                    .decode(&parsed_jwe.jwe.iv)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in iv")?;
+                let ciphertext = BASE64_URL_SAFE_NO_PAD
+                    .decode(&parsed_jwe.jwe.ciphertext)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in ciphertext")?;
+                let tag = BASE64_URL_SAFE_NO_PAD
+                    .decode(&parsed_jwe.jwe.tag)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in tag")?;
+
+                decrypt_auth_ml_kem_1024_dsa_87::<AesKey<A256Gcm>>(
+                    &encrypted_key,
+                    &iv,
+                    &ciphertext,
+                    &tag,
+                    &parsed_jwe.jwe.protected,
+                    from_kid, // This is the sender's KEM kid from APU (used in signing)
+                    to_kid,
+                    from_dsa_key.public_key(), // This is the sender's DSA public key
+                    to_key,
+                )?
             }
-            (KnownKeyPair::X25519(_), KnownKeyPair::P256(_), _) => Err(err_msg(
-                ErrorKind::Malformed,
-                "Incompatible sender and recipient key agreement curves",
-            ))?,
-            (KnownKeyPair::P256(_), KnownKeyPair::X25519(_), _) => Err(err_msg(
-                ErrorKind::Malformed,
-                "Incompatible sender and recipient key agreement curves",
-            ))?,
             _ => Err(err_msg(
                 ErrorKind::Unsupported,
                 "Unsupported key agreement method",

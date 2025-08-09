@@ -40,21 +40,21 @@ fn test_error_context_creation() {
         .with_operation("pack_encrypted")
         .with_did("did:example:alice")
         .with_message_id("msg-123")
-        .with_algorithm("X25519")
+        .with_algorithm("ML-KEM-768")
         .with_detail("recipient_count", "2")
-        .with_detail("key_type", "Ed25519");
+        .with_detail("key_type", "ML-DSA-65");
 
     assert_eq!(context.operation, Some("pack_encrypted".to_string()));
     assert_eq!(context.did, Some("did:example:alice".to_string()));
     assert_eq!(context.message_id, Some("msg-123".to_string()));
-    assert_eq!(context.algorithm, Some("X25519".to_string()));
+    assert_eq!(context.algorithm, Some("ML-KEM-768".to_string()));
     assert_eq!(
         context.details.get("recipient_count"),
         Some(&"2".to_string())
     );
     assert_eq!(
         context.details.get("key_type"),
-        Some(&"Ed25519".to_string())
+        Some(&"ML-DSA-65".to_string())
     );
 }
 
@@ -63,7 +63,7 @@ fn test_error_with_context() {
     let context = ErrorContext::new()
         .with_operation("message_encryption")
         .with_did("did:example:bob")
-        .with_algorithm("X25519");
+        .with_algorithm("ML-KEM-768");
 
     let error = Error::msg_with_context(
         ErrorKind::EncryptionFailed,
@@ -79,7 +79,7 @@ fn test_error_with_context() {
         Some("message_encryption".to_string())
     );
     assert_eq!(error_context.did, Some("did:example:bob".to_string()));
-    assert_eq!(error_context.algorithm, Some("X25519".to_string()));
+    assert_eq!(error_context.algorithm, Some("ML-KEM-768".to_string()));
 }
 
 #[test]
@@ -123,14 +123,14 @@ fn test_error_diagnostic_output() {
 #[test]
 fn test_error_context_builder_pattern() {
     let mut details = HashMap::new();
-    details.insert("curve".to_string(), "Ed25519".to_string());
+    details.insert("curve".to_string(), "ML-DSA-65".to_string());
     details.insert("key_size".to_string(), "256".to_string());
 
     let context = ErrorContext {
         operation: Some("key_derivation".to_string()),
         did: Some("did:example:test".to_string()),
         message_id: None,
-        algorithm: Some("EdDSA".to_string()),
+        algorithm: Some("ML-DSA".to_string()),
         details,
     };
 
@@ -139,10 +139,10 @@ fn test_error_context_builder_pattern() {
 
     let error_context = error.context().unwrap();
     assert_eq!(error_context.operation, Some("key_derivation".to_string()));
-    assert_eq!(error_context.algorithm, Some("EdDSA".to_string()));
+    assert_eq!(error_context.algorithm, Some("ML-DSA".to_string()));
     assert_eq!(
         error_context.details.get("curve"),
-        Some(&"Ed25519".to_string())
+        Some(&"ML-DSA-65".to_string())
     );
 }
 
@@ -187,31 +187,27 @@ fn test_comprehensive_error_kinds() {
     ];
 
     for (kind, is_did, is_crypto, is_protocol, is_retryable) in test_cases {
-        let error = Error::msg(kind, format!("Test error for {:?}", kind));
+        let error = Error::msg(kind, format!("Test error for {kind:?}"));
 
         assert_eq!(
             error.is_did_error(),
             is_did,
-            "DID error check failed for {:?}",
-            kind
+            "DID error check failed for {kind:?}"
         );
         assert_eq!(
             error.is_crypto_error(),
             is_crypto,
-            "Crypto error check failed for {:?}",
-            kind
+            "Crypto error check failed for {kind:?}"
         );
         assert_eq!(
             error.is_protocol_error(),
             is_protocol,
-            "Protocol error check failed for {:?}",
-            kind
+            "Protocol error check failed for {kind:?}"
         );
         assert_eq!(
             error.is_retryable(),
             is_retryable,
-            "Retryable check failed for {:?}",
-            kind
+            "Retryable check failed for {kind:?}"
         );
     }
 }

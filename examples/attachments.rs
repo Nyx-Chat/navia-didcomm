@@ -1,123 +1,161 @@
-#[allow(unused_imports, dead_code)]
-#[path = "../src/test_vectors/mod.rs"]
-mod test_vectors;
+// PQC-only DIDComm messaging example with attachments
+// Uses ML-KEM and ML-DSA post-quantum cryptographic algorithms
 
-// TODO: look for better solution
-// Allows test vectors usage inside and outside crate
-pub(crate) use navia_didcomm as didcomm;
-
+use base64::Engine;
 use navia_didcomm::{
-    did::resolvers::ExampleDIDResolver, protocols::routing::try_parse_forward,
-    secrets::resolvers::ExampleSecretsResolver, Attachment, AttachmentData, JsonAttachmentData,
-    Message, PackEncryptedOptions, UnpackOptions,
+    test_vectors::{PQCTestDIDResolver, PQCTestSecretsResolver, PQCTestVector},
+    Attachment, Message, PackEncryptedOptions, UnpackOptions,
 };
 use serde_json::json;
-use test_vectors::{
-    ALICE_DID, ALICE_DID_DOC, ALICE_SECRETS, BOB_DID, BOB_DID_DOC, BOB_SECRETS, MEDIATOR1_DID_DOC,
-    MEDIATOR1_SECRETS,
-};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    // --- Building message from ALICE to BOB ---
-    let msg = Message::build(
-        "example-1".to_owned(),
-        "example/v1".to_owned(),
-        json!("example-body"),
+    println!("=================== PQC ATTACHMENTS EXAMPLE ===================");
+    pqc_attachments_example().await;
+}
+
+async fn pqc_attachments_example() {
+    // Create PQC test vectors
+    let vectors = PQCTestVector::ml_kem_768_ml_dsa_65().expect("Failed to create PQC test vectors");
+
+    // Set up resolvers
+    let mut did_resolver = PQCTestDIDResolver::new();
+    did_resolver.add_did_doc(vectors.alice_did.clone(), vectors.alice_did_doc.clone());
+    did_resolver.add_did_doc(vectors.bob_did.clone(), vectors.bob_did_doc.clone());
+
+    let alice_secrets = PQCTestSecretsResolver::new(vectors.alice_secrets);
+    let bob_secrets = PQCTestSecretsResolver::new(vectors.bob_secrets);
+
+    // Create message with various types of attachments
+    let message = Message::build(
+        "attachment-example".to_string(),
+        "https://example.com/protocols/data-transfer/1.0/transfer".to_string(),
+        json!({
+            "description": "Message with PQC-secured attachments",
+            "timestamp": "2024-01-01T12:00:00Z"
+        }),
     )
-    .to(BOB_DID.to_owned())
-    .from(ALICE_DID.to_owned())
-    .attachment(Attachment {
-        data: AttachmentData::Json {
-            value: JsonAttachmentData {
-                json: json!({"foo": "bar"}),
-                jws: None,
-            },
-        },
-        id: Some("123".to_string()),
-        description: Some("example attachment".to_string()),
-        filename: None,
-        media_type: Some("application/didcomm-encrypted+json".to_string()),
-        format: None,
-        lastmod_time: None,
-        byte_count: None,
-    })
+    .to(vectors.bob_did.clone())
+    .from(vectors.alice_did.clone())
+    .attachments(vec![
+        // Base64 encoded attachment
+        Attachment::base64("SGVsbG8gUW9ybGQ=".to_string()) // "Hello World" in base64
+            .media_type("text/plain".to_string())
+            .filename("hello.txt".to_string())
+            .finalize(),
+        // JSON attachment
+        Attachment::json(json!({
+            "algorithm": "ML-KEM-768",
+            "security_level": "NIST Level 1",
+            "quantum_resistant": true
+        }))
+        .media_type("application/json".to_string())
+        .filename("crypto_info.json".to_string())
+        .finalize(),
+        // Links attachment (referencing external content)
+        Attachment::links(
+            vec!["https://example.com/large-file.zip".to_string()],
+            "50d858e0985ecc7f60418aaf0cc5ab587f42c2570a884095a9e8ccacd0f6545c".to_string(),
+        )
+        .media_type("application/zip".to_string())
+        .filename("large-file.zip".to_string())
+        .finalize(),
+    ])
     .finalize();
 
-    // --- Packing encrypted and authenticated message ---
-    let did_resolver = ExampleDIDResolver::new(vec![
-        ALICE_DID_DOC.clone(),
-        BOB_DID_DOC.clone(),
-        MEDIATOR1_DID_DOC.clone(),
-    ]);
+    println!(
+        "Message with attachments: {}",
+        serde_json::to_string_pretty(&message).unwrap()
+    );
+    println!(
+        "Number of attachments: {}",
+        message.attachments.as_ref().map_or(0, |a| a.len())
+    );
 
-    let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
-
-    let (msg, metadata) = msg
+    // Pack the message with encryption
+    let (packed_msg, pack_metadata) = message
         .pack_encrypted(
-            BOB_DID,
-            Some(ALICE_DID),
-            None,
+            &vectors.bob_did,
+            Some(&vectors.alice_did),
+            Some(&vectors.alice_did), // sign for non-repudiation
             &did_resolver,
-            &secrets_resolver,
+            &alice_secrets,
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Unable pack_encrypted");
+        .expect("Failed to pack encrypted message with attachments");
 
-    println!("Encryption metadata is\n{:?}\n", metadata);
+    println!("Packed message with attachments: {packed_msg}");
+    println!("Pack metadata: {pack_metadata:?}");
 
-    // --- Alice is sending message ---
-    println!("Alice is sending message \n{}\n", msg);
-
-    // --- Unpacking message by Mediator1 ---
-    let did_resolver = ExampleDIDResolver::new(vec![
-        ALICE_DID_DOC.clone(),
-        BOB_DID_DOC.clone(),
-        MEDIATOR1_DID_DOC.clone(),
-    ]);
-
-    let secrets_resolver = ExampleSecretsResolver::new(MEDIATOR1_SECRETS.clone());
-
-    let (msg, metadata) = Message::unpack(
-        &msg,
+    // Unpack the message
+    let (unpacked_msg, unpack_metadata) = Message::unpack(
+        &packed_msg,
         &did_resolver,
-        &secrets_resolver,
+        &bob_secrets,
         &UnpackOptions::default(),
     )
     .await
-    .expect("Unable unpack");
-
-    println!("Mediator1 received message is \n{:?}\n", msg);
+    .expect("Failed to unpack message with attachments");
 
     println!(
-        "Mediator1 received message unpack metadata is \n{:?}\n",
-        metadata
+        "Unpacked message: {}",
+        serde_json::to_string_pretty(&unpacked_msg).unwrap()
     );
+    println!("Unpack metadata: {unpack_metadata:?}");
 
-    // --- Forwarding message by Mediator1 ---
-    let msg = serde_json::to_string(&try_parse_forward(&msg).unwrap().forwarded_msg).unwrap();
+    // Verify message properties
+    assert!(
+        unpack_metadata.non_repudiation,
+        "Message should be non-repudiable"
+    );
+    assert!(
+        unpack_metadata.authenticated,
+        "Message should be authenticated"
+    );
+    assert!(unpack_metadata.encrypted, "Message should be encrypted");
 
-    println!("Mediator1 is forwarding message \n{}\n", msg);
+    // Verify attachments were preserved
+    let attachments = unpacked_msg
+        .attachments
+        .as_ref()
+        .expect("Attachments should be present");
+    assert_eq!(attachments.len(), 3, "Should have 3 attachments");
 
-    // --- Unpacking message by Bob ---
-    let did_resolver = ExampleDIDResolver::new(vec![
-        ALICE_DID_DOC.clone(),
-        BOB_DID_DOC.clone(),
-        MEDIATOR1_DID_DOC.clone(),
-    ]);
+    // Check each attachment type
+    println!("\n--- Attachment Details ---");
+    for (i, attachment) in attachments.iter().enumerate() {
+        println!("Attachment {}: {:?}", i + 1, attachment);
 
-    let secrets_resolver = ExampleSecretsResolver::new(BOB_SECRETS.clone());
+        match &attachment.data {
+            navia_didcomm::AttachmentData::Base64 { value } => {
+                println!("  Base64 data: {} chars", value.base64.len());
+                println!("  Media type: {:?}", attachment.media_type);
+                println!("  Filename: {:?}", attachment.filename);
 
-    let (msg, metadata) = Message::unpack(
-        &msg,
-        &did_resolver,
-        &secrets_resolver,
-        &UnpackOptions::default(),
-    )
-    .await
-    .expect("Unable unpack");
+                // Decode the base64 content for verification
+                if let Ok(decoded) = base64::prelude::BASE64_STANDARD.decode(&value.base64) {
+                    if let Ok(text) = String::from_utf8(decoded) {
+                        println!("  Content: {text}");
+                    }
+                }
+            }
+            navia_didcomm::AttachmentData::Json { value } => {
+                println!(
+                    "  JSON data: {}",
+                    serde_json::to_string(&value.json).unwrap()
+                );
+                println!("  Media type: {:?}", attachment.media_type);
+                println!("  Filename: {:?}", attachment.filename);
+            }
+            navia_didcomm::AttachmentData::Links { value } => {
+                println!("  Links: {:?}", value.links);
+                println!("  Hash: {}", value.hash);
+                println!("  Media type: {:?}", attachment.media_type);
+                println!("  Filename: {:?}", attachment.filename);
+            }
+        }
+    }
 
-    println!("Bob received message is \n{:?}\n", msg);
-    println!("Bob received message unpack metadata is \n{:?}\n", metadata);
+    println!("✅ PQC attachments example successful!");
 }

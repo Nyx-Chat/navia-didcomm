@@ -1,11 +1,10 @@
 use crate::{
     did::DIDResolver,
     error::{err_msg, ErrorKind, Result, ResultContext, ResultExt},
-    jws,
-    utils::{crypto::AsKnownKeyPair, did::did_or_url, secure_cmp::secure_string_eq},
+    pqc_jws::{self as jws, Algorithm},
+    utils::{crypto::AsKnownKeyPair, did::did_or_url},
     FromPrior,
 };
-use askar_crypto::alg::{ed25519::Ed25519KeyPair, k256::K256KeyPair, p256::P256KeyPair};
 use base64::prelude::*;
 
 impl FromPrior {
@@ -28,12 +27,10 @@ impl FromPrior {
         from_prior_jwt: &str,
         did_resolver: &'dr (dyn DIDResolver + 'dr),
     ) -> Result<(FromPrior, String)> {
-        let mut buf = vec![];
-        let parsed = jws::parse_compact(from_prior_jwt, &mut buf)?;
+        let (protected_header, payload, signature) = jws::parse_compact(from_prior_jwt)?;
 
-        let typ = parsed.parsed_header.typ;
-        let alg = parsed.parsed_header.alg.clone();
-        let kid = parsed.parsed_header.kid;
+        let typ = &protected_header.typ;
+        let alg = protected_header.alg.clone();
 
         if typ != "JWT" {
             Err(err_msg(
@@ -42,17 +39,23 @@ impl FromPrior {
             ))?;
         }
 
-        let (did, did_url) = did_or_url(kid);
+        // First decode the payload to get the issuer DID
+        let payload_bytes = BASE64_URL_SAFE_NO_PAD.decode(&payload).kind(
+            ErrorKind::Malformed,
+            "from_prior payload is not a valid base64",
+        )?;
 
-        if did_url.is_none() {
-            Err(err_msg(
-                ErrorKind::Malformed,
-                "from_prior kid is not DID URL",
-            ))?
-        }
+        let payload_str = String::from_utf8(payload_bytes).kind(
+            ErrorKind::Malformed,
+            "Decoded from_prior payload is not a valid UTF-8",
+        )?;
 
+        let temp_from_prior: FromPrior = serde_json::from_str(&payload_str)
+            .kind(ErrorKind::Malformed, "Unable to parse from_prior payload")?;
+
+        // Resolve the issuer DID to find authentication keys
         let did_doc = did_resolver
-            .resolve(did)
+            .resolve(&temp_from_prior.iss)
             .await
             .context("Unable to resolve from_prior issuer DID")?
             .ok_or_else(|| {
@@ -62,58 +65,95 @@ impl FromPrior {
                 )
             })?;
 
-        let kid = did_doc
-            .authentication
-            .iter()
-            .find(|&k| k.as_str() == kid)
-            .ok_or_else(|| {
-                err_msg(
-                    ErrorKind::DIDUrlNotFound,
-                    "from_prior issuer kid not found in DIDDoc",
-                )
-            })?
-            .as_str();
-
-        let key = did_doc
+        // Find authentication verification method that matches the algorithm
+        let auth_method = did_doc
             .verification_method
             .iter()
-            .find(|&vm| secure_string_eq(&vm.id, kid))
+            .find(|vm| {
+                did_doc.authentication.contains(&vm.id)
+                    && match &alg {
+                        Algorithm::MlDsa65 => matches!(
+                            vm.type_,
+                            crate::did::VerificationMethodType::MlDsa65VerificationKey2025
+                        ),
+                        Algorithm::MlDsa87 => matches!(
+                            vm.type_,
+                            crate::did::VerificationMethodType::MlDsa87VerificationKey2025
+                        ),
+                        _ => false,
+                    }
+            })
             .ok_or_else(|| {
                 err_msg(
                     ErrorKind::DIDUrlNotFound,
-                    "from_prior issuer verification method not found in DIDDoc",
+                    "No compatible authentication verification method found for algorithm",
                 )
             })?;
 
+        let kid = &auth_method.id;
+        let (_did, did_url) = did_or_url(kid);
+
+        if did_url.is_none() {
+            Err(err_msg(
+                ErrorKind::Malformed,
+                "from_prior kid is not DID URL",
+            ))?
+        }
+
         let valid = match alg {
-            jws::Algorithm::EdDSA => {
-                let key = key
-                    .as_ed25519()
-                    .context("Unable to instantiate from_prior issuer key")?;
+            jws::Algorithm::MlDsa65 => {
+                let signer_key = auth_method.as_ml_dsa_65().kind(
+                    ErrorKind::InvalidState,
+                    "Unable to instantiate from_prior issuer key",
+                )?;
 
-                parsed
-                    .verify::<Ed25519KeyPair>(&key)
-                    .context("Unable to verify from_prior signature")?
-            }
-            jws::Algorithm::Es256 => {
-                let key = key
-                    .as_p256()
-                    .context("Unable to instantiate from_prior issuer key")?;
+                let signature_bytes = BASE64_URL_SAFE_NO_PAD
+                    .decode(&signature)
+                    .kind(ErrorKind::InvalidState, "Unable to decode signature")?;
 
-                parsed
-                    .verify::<P256KeyPair>(&key)
-                    .context("Unable to verify from_prior signature")?
-            }
-            jws::Algorithm::Es256K => {
-                let key = key
-                    .as_k256()
-                    .context("Unable to instantiate from_prior issuer key")?;
+                let signing_input = format!(
+                    "{}.{}",
+                    BASE64_URL_SAFE_NO_PAD.encode(serde_json::to_vec(&protected_header).unwrap()),
+                    payload
+                );
 
-                parsed
-                    .verify::<K256KeyPair>(&key)
-                    .context("Unable to verify from_prior signature")?
+                crate::pqc_jws::verify_ml_dsa_65(
+                    &signature_bytes,
+                    signing_input.as_bytes(),
+                    signer_key.public_key(),
+                )
+                .kind(
+                    ErrorKind::Malformed,
+                    "Unable verify ML-DSA-65 from_prior signature",
+                )?
             }
-            jws::Algorithm::Other(_) => Err(err_msg(
+            jws::Algorithm::MlDsa87 => {
+                let signer_key = auth_method.as_ml_dsa_87().kind(
+                    ErrorKind::InvalidState,
+                    "Unable to instantiate from_prior issuer key",
+                )?;
+
+                let signature_bytes = BASE64_URL_SAFE_NO_PAD
+                    .decode(&signature)
+                    .kind(ErrorKind::InvalidState, "Unable to decode signature")?;
+
+                let signing_input = format!(
+                    "{}.{}",
+                    BASE64_URL_SAFE_NO_PAD.encode(serde_json::to_vec(&protected_header).unwrap()),
+                    payload
+                );
+
+                crate::pqc_jws::verify_ml_dsa_87(
+                    &signature_bytes,
+                    signing_input.as_bytes(),
+                    signer_key.public_key(),
+                )
+                .kind(
+                    ErrorKind::Malformed,
+                    "Unable verify ML-DSA-87 from_prior signature",
+                )?
+            }
+            jws::Algorithm::Other => Err(err_msg(
                 ErrorKind::Unsupported,
                 "Unsupported signature algorithm",
             ))?,
@@ -123,74 +163,254 @@ impl FromPrior {
             Err(err_msg(ErrorKind::Malformed, "Wrong from_prior signature"))?
         }
 
-        let payload = BASE64_URL_SAFE_NO_PAD.decode(parsed.payload).kind(
-            ErrorKind::Malformed,
-            "from_prior payload is not a valid base64",
-        )?;
-
-        let payload = String::from_utf8(payload).kind(
-            ErrorKind::Malformed,
-            "Decoded from_prior payload is not a valid UTF-8",
-        )?;
-
-        let from_prior: FromPrior = serde_json::from_str(&payload)
-            .kind(ErrorKind::Malformed, "Unable to parse from_prior")?;
-
-        Ok((from_prior, kid.into()))
+        Ok((temp_from_prior, kid.clone()))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        did::resolvers::ExampleDIDResolver,
         error::ErrorKind,
-        test_vectors::{
-            ALICE_DID_DOC, CHARLIE_AUTH_METHOD_25519, CHARLIE_DID_DOC, FROM_PRIOR_FULL,
-            FROM_PRIOR_JWT_FULL, FROM_PRIOR_JWT_INVALID, FROM_PRIOR_JWT_INVALID_SIGNATURE,
-        },
+        pqc_jws,
+        test_vectors::{PQCTestDIDResolver, PQCTestVector},
+        utils::crypto::AsKnownKeyPair,
         FromPrior,
     };
 
     #[tokio::test]
-    async fn from_prior_unpack_works() {
-        let did_resolver =
-            ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), CHARLIE_DID_DOC.clone()]);
+    async fn test_pqc_from_prior_unpack_works() {
+        let vectors = PQCTestVector::ml_kem_768_ml_dsa_65().expect("Failed to create test vectors");
 
-        let (from_prior, issuer_kid) = FromPrior::unpack(FROM_PRIOR_JWT_FULL, &did_resolver)
+        let mut did_resolver = PQCTestDIDResolver::new();
+        did_resolver.add_did_doc(vectors.alice_did.clone(), vectors.alice_did_doc.clone());
+        did_resolver.add_did_doc(vectors.bob_did.clone(), vectors.bob_did_doc.clone());
+
+        // Create a from_prior message
+        let from_prior = FromPrior {
+            iss: vectors.alice_did.clone(),
+            sub: vectors.bob_did.clone(),
+            aud: None,
+            exp: None,
+            nbf: None,
+            iat: Some(1640995200),
+            jti: None,
+        };
+
+        // Create a compact JWT manually using the ML-DSA-65 key
+        let from_prior_str =
+            serde_json::to_string(&from_prior).expect("Failed to serialize from_prior");
+        let alice_ml_dsa_key = vectors
+            .alice_secrets
+            .values()
+            .find(|s| {
+                matches!(
+                    s.type_,
+                    crate::secrets::SecretType::MlDsa65VerificationKey2025
+                )
+            })
+            .expect("Alice should have ML-DSA-65 key")
+            .as_ml_dsa_65()
+            .expect("Should convert to ML-DSA-65 keypair");
+
+        let jwt =
+            pqc_jws::sign_ml_dsa_65_compact(from_prior_str.as_bytes(), &alice_ml_dsa_key, "JWT")
+                .expect("Failed to sign JWT");
+
+        // Test unpacking
+        let (unpacked_from_prior, issuer_kid) = FromPrior::unpack(&jwt, &did_resolver)
             .await
-            .expect("unpack FromPrior failed");
+            .expect("Failed to unpack FromPrior JWT");
 
-        assert_eq!(&from_prior, &*FROM_PRIOR_FULL);
-        assert_eq!(issuer_kid, CHARLIE_AUTH_METHOD_25519.id);
+        assert_eq!(unpacked_from_prior.iss, vectors.alice_did);
+        assert_eq!(unpacked_from_prior.sub, vectors.bob_did);
+        assert_eq!(unpacked_from_prior.iat, Some(1640995200));
+        assert!(issuer_kid.contains(&vectors.alice_did));
+        assert!(issuer_kid.contains("authentication-1"));
     }
 
     #[tokio::test]
-    async fn from_prior_unpack_works_invalid() {
-        let did_resolver =
-            ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), CHARLIE_DID_DOC.clone()]);
+    async fn test_pqc_from_prior_unpack_ml_dsa_87() {
+        let vectors = PQCTestVector::ml_kem_1024_ml_dsa_87()
+            .expect("Failed to create ML-DSA-87 test vectors");
 
-        let err = FromPrior::unpack(FROM_PRIOR_JWT_INVALID, &did_resolver)
+        let mut did_resolver = PQCTestDIDResolver::new();
+        did_resolver.add_did_doc(vectors.alice_did.clone(), vectors.alice_did_doc.clone());
+        did_resolver.add_did_doc(vectors.bob_did.clone(), vectors.bob_did_doc.clone());
+
+        // Create a from_prior message with all optional fields
+        let from_prior = FromPrior {
+            iss: vectors.alice_did.clone(),
+            sub: vectors.bob_did.clone(),
+            aud: Some("test-audience".to_string()),
+            exp: Some(1672531200),
+            nbf: Some(1640995200),
+            iat: Some(1640995200),
+            jti: Some("test-jti-456".to_string()),
+        };
+
+        // Create a compact JWT using ML-DSA-87
+        let from_prior_str =
+            serde_json::to_string(&from_prior).expect("Failed to serialize from_prior");
+        let alice_ml_dsa_key = vectors
+            .alice_secrets
+            .values()
+            .find(|s| {
+                matches!(
+                    s.type_,
+                    crate::secrets::SecretType::MlDsa87VerificationKey2025
+                )
+            })
+            .expect("Alice should have ML-DSA-87 key")
+            .as_ml_dsa_87()
+            .expect("Should convert to ML-DSA-87 keypair");
+
+        let jwt =
+            pqc_jws::sign_ml_dsa_87_compact(from_prior_str.as_bytes(), &alice_ml_dsa_key, "JWT")
+                .expect("Failed to sign JWT");
+
+        // Test unpacking
+        let (unpacked_from_prior, issuer_kid) = FromPrior::unpack(&jwt, &did_resolver)
             .await
-            .expect_err("res is ok");
+            .expect("Failed to unpack FromPrior JWT with ML-DSA-87");
+
+        assert_eq!(unpacked_from_prior, from_prior);
+        assert!(issuer_kid.contains(&vectors.alice_did));
+        assert!(issuer_kid.contains("authentication-1"));
+
+        // Verify all optional fields are preserved
+        assert_eq!(unpacked_from_prior.aud, Some("test-audience".to_string()));
+        assert_eq!(unpacked_from_prior.exp, Some(1672531200));
+        assert_eq!(unpacked_from_prior.nbf, Some(1640995200));
+        assert_eq!(unpacked_from_prior.jti, Some("test-jti-456".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_pqc_from_prior_unpack_invalid_format() {
+        let vectors = PQCTestVector::ml_kem_768_ml_dsa_65().expect("Failed to create test vectors");
+
+        let mut did_resolver = PQCTestDIDResolver::new();
+        did_resolver.add_did_doc(vectors.alice_did.clone(), vectors.alice_did_doc.clone());
+
+        // Test with invalid JWT format (not 3 parts)
+        let invalid_jwt = "invalid.jwt";
+        let err = FromPrior::unpack(invalid_jwt, &did_resolver)
+            .await
+            .expect_err("Should fail with invalid format");
 
         assert_eq!(err.kind(), ErrorKind::Malformed);
-        assert_eq!(
-            format!("{err}"),
-            "Message malformed or invalid: Unable to parse compactly serialized JWS"
+        assert!(format!("{err}").contains("Invalid compact JWS format"));
+
+        // Test with invalid base64
+        let invalid_b64_jwt = "invalid-base64.payload.signature";
+        let err = FromPrior::unpack(invalid_b64_jwt, &did_resolver)
+            .await
+            .expect_err("Should fail with invalid base64");
+
+        assert_eq!(err.kind(), ErrorKind::Malformed);
+        assert!(format!("{err}").contains("Invalid base64"));
+    }
+
+    #[tokio::test]
+    async fn test_pqc_from_prior_unpack_wrong_signature() {
+        let vectors = PQCTestVector::ml_kem_768_ml_dsa_65().expect("Failed to create test vectors");
+
+        let mut did_resolver = PQCTestDIDResolver::new();
+        did_resolver.add_did_doc(vectors.alice_did.clone(), vectors.alice_did_doc.clone());
+        did_resolver.add_did_doc(vectors.bob_did.clone(), vectors.bob_did_doc.clone());
+
+        // Create a valid from_prior message
+        let from_prior = FromPrior {
+            iss: vectors.alice_did.clone(),
+            sub: vectors.bob_did.clone(),
+            aud: None,
+            exp: None,
+            nbf: None,
+            iat: Some(1640995200),
+            jti: None,
+        };
+
+        let from_prior_str = serde_json::to_string(&from_prior).expect("Failed to serialize");
+        let alice_key = vectors
+            .alice_secrets
+            .values()
+            .find(|s| {
+                matches!(
+                    s.type_,
+                    crate::secrets::SecretType::MlDsa65VerificationKey2025
+                )
+            })
+            .expect("Alice should have ML-DSA-65 key")
+            .as_ml_dsa_65()
+            .expect("Should convert to keypair");
+
+        // Create a valid JWT
+        let jwt = pqc_jws::sign_ml_dsa_65_compact(from_prior_str.as_bytes(), &alice_key, "JWT")
+            .expect("Failed to sign JWT");
+
+        // Tamper with the signature (flip the last character)
+        let mut jwt_parts: Vec<&str> = jwt.split('.').collect();
+        let mut tampered_sig = jwt_parts[2].to_string();
+        tampered_sig.pop();
+        tampered_sig.push('X'); // Change last character
+        jwt_parts[2] = &tampered_sig;
+        let tampered_jwt = jwt_parts.join(".");
+
+        // Test unpacking tampered JWT
+        let err = FromPrior::unpack(&tampered_jwt, &did_resolver)
+            .await
+            .expect_err("Should fail with wrong signature");
+
+        // Could be InvalidState (base64 decode failure) or Malformed (signature verification failure)
+        let err_kind = err.kind();
+        assert!(err_kind == ErrorKind::Malformed || err_kind == ErrorKind::InvalidState);
+        let err_msg = format!("{err}");
+        assert!(
+            err_msg.contains("signature")
+                || err_msg.contains("decode")
+                || err_msg.contains("invalid")
         );
     }
 
     #[tokio::test]
-    async fn from_prior_unpack_works_invalid_signature() {
-        let did_resolver =
-            ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), CHARLIE_DID_DOC.clone()]);
+    async fn test_pqc_from_prior_unpack_missing_did() {
+        let vectors = PQCTestVector::ml_kem_768_ml_dsa_65().expect("Failed to create test vectors");
 
-        let err = FromPrior::unpack(FROM_PRIOR_JWT_INVALID_SIGNATURE, &did_resolver)
+        // Create resolver without the required DID
+        let did_resolver = PQCTestDIDResolver::new(); // Empty resolver
+
+        let from_prior = FromPrior {
+            iss: vectors.alice_did.clone(),
+            sub: vectors.bob_did.clone(),
+            aud: None,
+            exp: None,
+            nbf: None,
+            iat: Some(1640995200),
+            jti: None,
+        };
+
+        let from_prior_str = serde_json::to_string(&from_prior).expect("Failed to serialize");
+        let alice_key = vectors
+            .alice_secrets
+            .values()
+            .find(|s| {
+                matches!(
+                    s.type_,
+                    crate::secrets::SecretType::MlDsa65VerificationKey2025
+                )
+            })
+            .expect("Alice should have ML-DSA-65 key")
+            .as_ml_dsa_65()
+            .expect("Should convert to keypair");
+
+        let jwt = pqc_jws::sign_ml_dsa_65_compact(from_prior_str.as_bytes(), &alice_key, "JWT")
+            .expect("Failed to sign JWT");
+
+        // Test unpacking with missing DID
+        let err = FromPrior::unpack(&jwt, &did_resolver)
             .await
-            .expect_err("res is ok");
+            .expect_err("Should fail with missing DID");
 
-        assert_eq!(err.kind(), ErrorKind::Malformed);
-        assert_eq!(format!("{err}"), "Message malformed or invalid: Unable to verify from_prior signature: Unable decode signature: Invalid last symbol 66, offset 85.");
+        assert_eq!(err.kind(), ErrorKind::DIDNotResolved);
+        assert!(format!("{err}").contains("DIDDoc not found"));
     }
 }

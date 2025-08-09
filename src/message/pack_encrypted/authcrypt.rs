@@ -1,18 +1,13 @@
-use askar_crypto::{
-    alg::{
-        aes::{A256CbcHs512, A256Gcm, A256Kw, AesKey},
-        chacha20::{Chacha20Key, XC20P},
-        p256::P256KeyPair,
-        x25519::X25519KeyPair,
-    },
-    kdf::{ecdh_1pu::Ecdh1PU, ecdh_es::EcdhEs},
+use askar_crypto::alg::{
+    aes::{A256Gcm, AesKey},
+    chacha20::{Chacha20Key, XC20P},
 };
 
 use crate::{
     algorithms::{AnonCryptAlg, AuthCryptAlg},
     did::DIDResolver,
-    error::{err_msg, ErrorKind, Result, ResultContext},
-    jwe,
+    error::{err_msg, ErrorKind, Result, ResultContext, ResultExt},
+    pqc_jwe, pqc_jwe as jwe,
     secrets::SecretsResolver,
     utils::{
         crypto::{AsKnownKeyPair, KnownKeyAlg},
@@ -53,8 +48,8 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
     let from_kids: Vec<_> = from_ddoc
         .key_agreement
         .iter()
-        .filter(|kid| from_kid.map(|from_kid| kid == &from_kid).unwrap_or(true))
-        .map(|s| s.as_str())
+        .filter(|kid| from_kid.map_or(true, |from_kid| kid == &from_kid))
+        .map(std::string::String::as_str)
         .collect();
 
     if from_kids.is_empty() {
@@ -99,8 +94,8 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
     let to_kids: Vec<_> = to_ddoc
         .key_agreement
         .iter()
-        .filter(|kid| to_kid.map(|to_kid| kid == &to_kid).unwrap_or(true))
-        .map(|s| s.as_str())
+        .filter(|kid| to_kid.map_or(true, |to_kid| kid == &to_kid))
+        .map(std::string::String::as_str)
         .collect();
 
     if to_kids.is_empty() {
@@ -145,12 +140,32 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
             )
         })?;
 
-    // Resolve secret for found sender key
-    let from_priv_key = secrets_resolver
+    // Resolve secret for found sender key (ML-KEM for encryption)
+    let _from_priv_key = secrets_resolver
         .get_secret(&from_key.id)
         .await
         .context("Unable resolve sender secret")?
         .ok_or_else(|| err_msg(ErrorKind::InvalidState, "Sender secret not found"))?;
+
+    // For AuthCrypt, we also need the sender's signing key (ML-DSA)
+    // Find authentication key in sender DID document
+    let auth_key_id = from_ddoc.authentication.first().ok_or_else(|| {
+        err_msg(
+            ErrorKind::DIDUrlNotFound,
+            "No authentication key found in sender DID doc",
+        )
+    })?;
+
+    let auth_secret = secrets_resolver
+        .get_secret(auth_key_id)
+        .await
+        .context("Unable resolve sender authentication secret")?
+        .ok_or_else(|| {
+            err_msg(
+                ErrorKind::InvalidState,
+                "Sender authentication secret not found",
+            )
+        })?;
 
     let key_alg = from_key.key_alg();
 
@@ -161,152 +176,153 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
         .collect();
 
     let msg = match key_alg {
-        KnownKeyAlg::X25519 => {
-            let _to_keys = to_keys
+        KnownKeyAlg::MlKem1024 => {
+            let to_key_pairs = to_keys
                 .iter()
-                .map(|vm| vm.as_x25519().map(|k| (&vm.id, k)))
+                .map(|vm| vm.as_ml_kem_1024().map(|k| (&vm.id, k.public_key())))
                 .collect::<Result<Vec<_>>>()?;
 
-            let to_keys: Vec<_> = _to_keys
+            let to_keys: Vec<_> = to_key_pairs
                 .iter()
                 .map(|(id, key)| (id.as_str(), key))
                 .collect();
 
+            let sender_key_pair = auth_secret.as_ml_dsa_87()?;
+
             let msg = match enc_alg_auth {
-                AuthCryptAlg::A256cbcHs512Ecdh1puA256kw => jwe::encrypt::<
-                    AesKey<A256CbcHs512>,
-                    Ecdh1PU<'_, X25519KeyPair>,
-                    X25519KeyPair,
-                    AesKey<A256Kw>,
-                >(
-                    msg,
-                    jwe::Algorithm::Ecdh1puA256kw,
-                    jwe::EncAlgorithm::A256cbcHs512,
-                    Some((&from_key.id, &from_priv_key.as_x25519()?)),
-                    &to_keys,
-                )
-                .context("Unable produce authcrypt envelope")?,
+                AuthCryptAlg::MlKem1024A256cbcHs512 => {
+                    pqc_jwe::encrypt_auth_ml_kem_1024_dsa_87::<AesKey<A256Gcm>>(
+                        msg,
+                        jwe::EncAlgorithm::A256Gcm,
+                        &from_key.id,
+                        &sender_key_pair,
+                        &to_keys,
+                    )
+                    .kind(
+                        ErrorKind::InvalidState,
+                        "Unable produce ML-KEM-1024 + DSA-87 authcrypt envelope",
+                    )?
+                }
+
+                AuthCryptAlg::MlKem768A256cbcHs512 => {
+                    return Err(err_msg(
+                        ErrorKind::NoCompatibleCrypto,
+                        "ML-KEM-768 algorithm not supported with ML-KEM-1024 keys",
+                    ))
+                }
             };
 
             if protect_sender {
                 match enc_alg_anon {
-                    AnonCryptAlg::A256cbcHs512EcdhEsA256kw => jwe::encrypt::<
-                        AesKey<A256CbcHs512>,
-                        EcdhEs<'_, X25519KeyPair>,
-                        X25519KeyPair,
-                        AesKey<A256Kw>,
-                    >(
-                        msg.as_bytes(),
-                        jwe::Algorithm::EcdhEsA256kw,
-                        jwe::EncAlgorithm::A256cbcHs512,
-                        None,
-                        &to_keys,
-                    )
-                    .context("Unable produce authcrypt envelope")?,
-                    AnonCryptAlg::Xc20pEcdhEsA256kw => jwe::encrypt::<
-                        Chacha20Key<XC20P>,
-                        EcdhEs<'_, X25519KeyPair>,
-                        X25519KeyPair,
-                        AesKey<A256Kw>,
-                    >(
-                        msg.as_bytes(),
-                        jwe::Algorithm::EcdhEsA256kw,
-                        jwe::EncAlgorithm::Xc20P,
-                        None,
-                        &to_keys,
-                    )
-                    .context("Unable produce authcrypt envelope")?,
-                    AnonCryptAlg::A256gcmEcdhEsA256kw => jwe::encrypt::<
-                        AesKey<A256Gcm>,
-                        EcdhEs<'_, X25519KeyPair>,
-                        X25519KeyPair,
-                        AesKey<A256Kw>,
-                    >(
-                        msg.as_bytes(),
-                        jwe::Algorithm::EcdhEsA256kw,
-                        jwe::EncAlgorithm::A256Gcm,
-                        None,
-                        &to_keys,
-                    )
-                    .context("Unable produce authcrypt envelope")?,
+                    AnonCryptAlg::MlKem1024Xc20p => {
+                        pqc_jwe::encrypt_anon_ml_kem_1024::<Chacha20Key<XC20P>>(
+                            msg.as_bytes(),
+                            jwe::EncAlgorithm::Xc20P,
+                            &to_keys,
+                        )
+                        .kind(
+                            ErrorKind::InvalidState,
+                            "Unable produce ML-KEM-1024 + XC20P anoncrypt envelope",
+                        )?
+                    }
+
+                    AnonCryptAlg::MlKem1024A256gcm => {
+                        pqc_jwe::encrypt_anon_ml_kem_1024::<AesKey<A256Gcm>>(
+                            msg.as_bytes(),
+                            jwe::EncAlgorithm::A256Gcm,
+                            &to_keys,
+                        )
+                        .kind(
+                            ErrorKind::InvalidState,
+                            "Unable produce ML-KEM-1024 + A256GCM anoncrypt envelope",
+                        )?
+                    }
+
+                    _ => {
+                        return Err(err_msg(
+                            ErrorKind::InvalidState,
+                            "Unsupported AuthCrypt algorithm",
+                        ))
+                    }
                 }
             } else {
                 msg
             }
         }
-        KnownKeyAlg::P256 => {
-            let _to_keys = to_keys
+        KnownKeyAlg::MlKem768 => {
+            let to_key_pairs = to_keys
                 .iter()
-                .map(|vm| vm.as_p256().map(|k| (&vm.id, k)))
+                .map(|vm| vm.as_ml_kem_768().map(|k| (&vm.id, k.public_key())))
                 .collect::<Result<Vec<_>>>()?;
 
-            let to_keys: Vec<_> = _to_keys
+            let to_keys: Vec<_> = to_key_pairs
                 .iter()
                 .map(|(id, key)| (id.as_str(), key))
                 .collect();
 
+            let sender_key_pair = auth_secret.as_ml_dsa_65()?;
+
             let msg = match enc_alg_auth {
-                AuthCryptAlg::A256cbcHs512Ecdh1puA256kw => jwe::encrypt::<
-                    AesKey<A256CbcHs512>,
-                    Ecdh1PU<'_, P256KeyPair>,
-                    P256KeyPair,
-                    AesKey<A256Kw>,
-                >(
-                    msg,
-                    jwe::Algorithm::Ecdh1puA256kw,
-                    jwe::EncAlgorithm::A256cbcHs512,
-                    Some((&from_key.id, &from_priv_key.as_p256()?)),
-                    &to_keys,
-                )
-                .context("Unable produce authcrypt envelope")?,
+                AuthCryptAlg::MlKem768A256cbcHs512 => {
+                    pqc_jwe::encrypt_auth_ml_kem_768_dsa_65::<AesKey<A256Gcm>>(
+                        msg,
+                        jwe::EncAlgorithm::A256Gcm,
+                        &from_key.id,
+                        &sender_key_pair,
+                        &to_keys,
+                    )
+                    .kind(
+                        ErrorKind::InvalidState,
+                        "Unable produce ML-KEM-768 + DSA-65 authcrypt envelope",
+                    )?
+                }
+
+                AuthCryptAlg::MlKem1024A256cbcHs512 => {
+                    return Err(err_msg(
+                        ErrorKind::NoCompatibleCrypto,
+                        "ML-KEM-1024 algorithm not supported with ML-KEM-768 keys",
+                    ))
+                }
             };
 
             if protect_sender {
                 match enc_alg_anon {
-                    AnonCryptAlg::A256cbcHs512EcdhEsA256kw => jwe::encrypt::<
-                        AesKey<A256CbcHs512>,
-                        EcdhEs<'_, P256KeyPair>,
-                        P256KeyPair,
-                        AesKey<A256Kw>,
-                    >(
-                        msg.as_bytes(),
-                        jwe::Algorithm::EcdhEsA256kw,
-                        jwe::EncAlgorithm::A256cbcHs512,
-                        None,
-                        &to_keys,
-                    )
-                    .context("Unable produce authcrypt envelope")?,
-                    AnonCryptAlg::Xc20pEcdhEsA256kw => jwe::encrypt::<
-                        Chacha20Key<XC20P>,
-                        EcdhEs<'_, P256KeyPair>,
-                        P256KeyPair,
-                        AesKey<A256Kw>,
-                    >(
-                        msg.as_bytes(),
-                        jwe::Algorithm::EcdhEsA256kw,
-                        jwe::EncAlgorithm::Xc20P,
-                        None,
-                        &to_keys,
-                    )
-                    .context("Unable produce authcrypt envelope")?,
-                    AnonCryptAlg::A256gcmEcdhEsA256kw => jwe::encrypt::<
-                        AesKey<A256Gcm>,
-                        EcdhEs<'_, P256KeyPair>,
-                        P256KeyPair,
-                        AesKey<A256Kw>,
-                    >(
-                        msg.as_bytes(),
-                        jwe::Algorithm::EcdhEsA256kw,
-                        jwe::EncAlgorithm::A256Gcm,
-                        None,
-                        &to_keys,
-                    )
-                    .context("Unable produce authcrypt envelope")?,
+                    AnonCryptAlg::MlKem768Xc20p => {
+                        pqc_jwe::encrypt_anon_ml_kem_768::<Chacha20Key<XC20P>>(
+                            msg.as_bytes(),
+                            jwe::EncAlgorithm::Xc20P,
+                            &to_keys,
+                        )
+                        .kind(
+                            ErrorKind::InvalidState,
+                            "Unable produce ML-KEM-768 + XC20P authcrypt envelope",
+                        )?
+                    }
+
+                    AnonCryptAlg::MlKem768A256gcm => {
+                        pqc_jwe::encrypt_anon_ml_kem_768::<AesKey<A256Gcm>>(
+                            msg.as_bytes(),
+                            jwe::EncAlgorithm::A256Gcm,
+                            &to_keys,
+                        )
+                        .kind(
+                            ErrorKind::InvalidState,
+                            "Unable produce ML-KEM-768 + A256GCM authcrypt envelope",
+                        )?
+                    }
+
+                    _ => {
+                        return Err(err_msg(
+                            ErrorKind::InvalidState,
+                            "Unsupported AuthCrypt algorithm",
+                        ))
+                    }
                 }
             } else {
                 msg
             }
         }
+
         _ => Err(err_msg(
             ErrorKind::Unsupported,
             "Unsupported recipient key agreement method",

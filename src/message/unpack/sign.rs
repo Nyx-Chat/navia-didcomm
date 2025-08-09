@@ -1,12 +1,10 @@
-use askar_crypto::alg::{ed25519::Ed25519KeyPair, k256::K256KeyPair, p256::P256KeyPair};
 use base64::prelude::*;
 
-use crate::jws::JWS;
+use crate::pqc_jws::{Algorithm, JWS};
 use crate::{
     algorithms::SignAlg,
     did::DIDResolver,
     error::{err_msg, ErrorKind, Result, ResultContext, ResultExt},
-    jws,
     utils::{crypto::AsKnownKeyPair, did::did_or_url},
     UnpackMetadata, UnpackOptions,
 };
@@ -46,7 +44,7 @@ pub(crate) async fn _try_unpack_sign<'dr>(
         })?
         .alg;
 
-    let signer_kid = parsed_jws
+    let signer_kid = &parsed_jws
         .jws
         .signatures
         .first()
@@ -93,40 +91,60 @@ pub(crate) async fn _try_unpack_sign<'dr>(
         })?;
 
     let valid = match alg {
-        jws::Algorithm::EdDSA => {
-            metadata.sign_alg = Some(SignAlg::EdDSA);
+        Algorithm::MlDsa65 => {
+            metadata.sign_alg = Some(SignAlg::MlDsa65);
 
             let signer_key = signer_key
-                .as_ed25519()
-                .context("Unable instantiate signer key")?;
+                .as_ml_dsa_65()
+                .kind(ErrorKind::InvalidState, "Unable instantiate signer key")?;
 
-            parsed_jws
-                .verify::<Ed25519KeyPair>((signer_kid, &signer_key))
-                .context("Unable verify sign envelope")?
+            let signature_bytes = BASE64_URL_SAFE_NO_PAD
+                .decode(&parsed_jws.jws.signatures[0].signature)
+                .kind(ErrorKind::InvalidState, "Unable to decode signature")?;
+
+            let signing_input = format!(
+                "{}.{}",
+                parsed_jws.jws.signatures[0].protected, parsed_jws.jws.payload
+            );
+
+            crate::pqc_jws::verify_ml_dsa_65(
+                &signature_bytes,
+                signing_input.as_bytes(),
+                signer_key.public_key(),
+            )
+            .kind(
+                ErrorKind::InvalidState,
+                "Unable verify ML-DSA-65 sign envelope",
+            )?
         }
-        jws::Algorithm::Es256 => {
-            metadata.sign_alg = Some(SignAlg::ES256);
+        Algorithm::MlDsa87 => {
+            metadata.sign_alg = Some(SignAlg::MlDsa87);
 
             let signer_key = signer_key
-                .as_p256()
-                .context("Unable instantiate signer key")?;
+                .as_ml_dsa_87()
+                .kind(ErrorKind::InvalidState, "Unable instantiate signer key")?;
 
-            parsed_jws
-                .verify::<P256KeyPair>((signer_kid, &signer_key))
-                .context("Unable verify sign envelope")?
+            let signature_bytes = BASE64_URL_SAFE_NO_PAD
+                .decode(&parsed_jws.jws.signatures[0].signature)
+                .kind(ErrorKind::InvalidState, "Unable to decode signature")?;
+
+            let signing_input = format!(
+                "{}.{}",
+                parsed_jws.jws.signatures[0].protected, parsed_jws.jws.payload
+            );
+
+            crate::pqc_jws::verify_ml_dsa_87(
+                &signature_bytes,
+                signing_input.as_bytes(),
+                signer_key.public_key(),
+            )
+            .kind(
+                ErrorKind::InvalidState,
+                "Unable verify ML-DSA-87 sign envelope",
+            )?
         }
-        jws::Algorithm::Es256K => {
-            metadata.sign_alg = Some(SignAlg::ES256K);
 
-            let signer_key = signer_key
-                .as_k256()
-                .context("Unable instantiate signer key")?;
-
-            parsed_jws
-                .verify::<K256KeyPair>((signer_kid, &signer_key))
-                .context("Unable verify sign envelope")?
-        }
-        jws::Algorithm::Other(_) => Err(err_msg(
+        Algorithm::Other => Err(err_msg(
             ErrorKind::Unsupported,
             "Unsupported signature algorithm",
         ))?,
@@ -136,7 +154,7 @@ pub(crate) async fn _try_unpack_sign<'dr>(
         Err(err_msg(ErrorKind::Malformed, "Wrong signature"))?
     }
 
-    // TODO: More precise error conversion
+    // Decode JWS payload with proper error context
     let payload = BASE64_URL_SAFE_NO_PAD
         .decode(parsed_jws.jws.payload)
         .kind(ErrorKind::Malformed, "Signed payloa is invalid base64")?;

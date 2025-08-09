@@ -1,628 +1,256 @@
-#[allow(unused_imports, dead_code)]
-#[path = "../src/test_vectors/mod.rs"]
-mod test_vectors;
-
-// TODO: look for better solution
-// Allows test vectors usage inside and outside crate
-pub(crate) use navia_didcomm as didcomm;
+// PQC-only basic DIDComm messaging example
+// Uses ML-KEM and ML-DSA post-quantum cryptographic algorithms
 
 use navia_didcomm::{
-    did::resolvers::ExampleDIDResolver, protocols::routing::try_parse_forward,
-    secrets::resolvers::ExampleSecretsResolver, Message, PackEncryptedOptions, UnpackOptions,
+    algorithms::AuthCryptAlg,
+    test_vectors::{PQCTestDIDResolver, PQCTestSecretsResolver, PQCTestVector},
+    Message, PackEncryptedOptions, UnpackOptions,
 };
 use serde_json::json;
-use test_vectors::{
-    ALICE_DID, ALICE_DID_DOC, ALICE_SECRETS, BOB_DID, BOB_DID_DOC, BOB_SECRETS, CHARLIE_DID,
-    CHARLIE_DID_DOC, CHARLIE_SECRETS, MEDIATOR1_DID_DOC, MEDIATOR1_SECRETS, MEDIATOR2_DID_DOC,
-    MEDIATOR2_SECRETS, MEDIATOR3_DID_DOC, MEDIATOR3_SECRETS,
-};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    println!("=================== NON REPUDIABLE ENCRYPTION ===================");
-    non_repudiable_encryption().await;
-    println!("=================== MULTI RECIPIENT ===================");
-    multi_recipient().await;
-    println!("=================== REPUDIABLE AUTHENTICATED ENCRYPTION ===================");
-    repudiable_authenticated_encryption().await;
-    println!("=================== REPUDIABLE NON AUTHENTICATED ENCRYPTION ===================");
-    repudiable_non_authenticated_encryption().await;
-    println!("=================== SIGNED UNENCRYPTED ===================");
-    signed_unencrypted().await;
-    println!("=================== PLAINTEXT UNENCRYPTED ===================");
-    plaintext_unencrypted().await;
+    println!("=================== PQC NON REPUDIABLE ENCRYPTION ===================");
+    pqc_non_repudiable_encryption().await;
+    println!("=================== PQC REPUDIABLE AUTHENTICATED ENCRYPTION ===================");
+    pqc_repudiable_authenticated_encryption().await;
+    println!("=================== PQC ANONYMOUS ENCRYPTION ===================");
+    pqc_anonymous_encryption().await;
 }
 
-async fn non_repudiable_encryption() {
-    // --- Building message from ALICE to BOB ---
-    let msg = Message::build(
-        "example-1".to_owned(),
-        "example/v1".to_owned(),
-        json!("example-body"),
+async fn pqc_non_repudiable_encryption() {
+    // Create PQC test vectors with ML-KEM-768 and ML-DSA-65
+    let vectors = PQCTestVector::ml_kem_768_ml_dsa_65().expect("Failed to create PQC test vectors");
+
+    // Set up resolvers
+    let mut did_resolver = PQCTestDIDResolver::new();
+    did_resolver.add_did_doc(vectors.alice_did.clone(), vectors.alice_did_doc.clone());
+    did_resolver.add_did_doc(vectors.bob_did.clone(), vectors.bob_did_doc.clone());
+
+    let alice_secrets = PQCTestSecretsResolver::new(vectors.alice_secrets);
+    let bob_secrets = PQCTestSecretsResolver::new(vectors.bob_secrets);
+
+    // Create message with from_prior header
+    let message = Message::build(
+        "example-1".to_string(),
+        "https://example.com/protocols/hello/1.0/hello".to_string(),
+        json!({ "messagespecificattribute": "and its value" }),
     )
-    .to(BOB_DID.to_owned())
-    .from(ALICE_DID.to_owned())
+    .to(vectors.bob_did.clone())
+    .from(vectors.alice_did.clone())
     .finalize();
 
-    // --- Packing encrypted and authenticated message ---
-    let did_resolver = ExampleDIDResolver::new(vec![
-        ALICE_DID_DOC.clone(),
-        BOB_DID_DOC.clone(),
-        MEDIATOR1_DID_DOC.clone(),
-    ]);
+    println!(
+        "Sending message: {}",
+        serde_json::to_string_pretty(&message).unwrap()
+    );
 
-    let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
-
-    let (msg, metadata) = msg
+    // Pack with signing + encryption (non-repudiable)
+    let (packed_msg, pack_metadata) = message
         .pack_encrypted(
-            BOB_DID,
-            Some(ALICE_DID),
-            Some(ALICE_DID),
+            &vectors.bob_did,
+            Some(&vectors.alice_did),
+            Some(&vectors.alice_did), // sign with alice's key
             &did_resolver,
-            &secrets_resolver,
+            &alice_secrets,
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Unable pack_encrypted");
+        .expect("Failed to pack encrypted message");
 
-    println!("Encryption metadata is\n{:?}\n", metadata);
+    println!("Packed Message: {packed_msg}");
+    println!("Pack Metadata: {pack_metadata:?}");
 
-    // --- Sending message by Alice ---
-    println!("Alice is sending message \n{}\n", msg);
-
-    // --- Unpacking message by Mediator1 ---
-    let did_resolver = ExampleDIDResolver::new(vec![
-        ALICE_DID_DOC.clone(),
-        BOB_DID_DOC.clone(),
-        MEDIATOR1_DID_DOC.clone(),
-    ]);
-
-    let secrets_resolver = ExampleSecretsResolver::new(MEDIATOR1_SECRETS.clone());
-
-    let (msg, metadata) = Message::unpack(
-        &msg,
+    // Unpack message
+    let (unpacked_msg, unpack_metadata) = Message::unpack(
+        &packed_msg,
         &did_resolver,
-        &secrets_resolver,
+        &bob_secrets,
         &UnpackOptions::default(),
     )
     .await
-    .expect("Unable unpack");
-
-    println!("Mediator1 received message is \n{:?}\n", msg);
+    .expect("Failed to unpack message");
 
     println!(
-        "Mediator1 received message unpack metadata is \n{:?}\n",
-        metadata
+        "Unpacked Message: {}",
+        serde_json::to_string_pretty(&unpacked_msg).unwrap()
+    );
+    println!("Unpack Metadata: {unpack_metadata:?}");
+
+    // Verify non-repudiation properties
+    assert!(
+        unpack_metadata.non_repudiation,
+        "Message should be non-repudiable"
+    );
+    assert!(
+        unpack_metadata.authenticated,
+        "Message should be authenticated"
+    );
+    assert!(unpack_metadata.encrypted, "Message should be encrypted");
+    assert!(
+        !unpack_metadata.anonymous_sender,
+        "Sender should not be anonymous"
     );
 
-    // --- Forwarding message by Mediator1 ---
-    let msg = serde_json::to_string(&try_parse_forward(&msg).unwrap().forwarded_msg).unwrap();
+    println!("✅ PQC non-repudiable encryption successful!");
+}
 
-    println!("Mediator1 is forwarding message \n{}\n", msg);
+async fn pqc_repudiable_authenticated_encryption() {
+    // Create PQC test vectors with ML-KEM-1024 and ML-DSA-87 for variety
+    let vectors =
+        PQCTestVector::ml_kem_1024_ml_dsa_87().expect("Failed to create PQC test vectors");
 
-    // --- Unpacking message by Bob ---
-    let did_resolver = ExampleDIDResolver::new(vec![
-        ALICE_DID_DOC.clone(),
-        BOB_DID_DOC.clone(),
-        MEDIATOR1_DID_DOC.clone(),
-    ]);
+    // Set up resolvers
+    let mut did_resolver = PQCTestDIDResolver::new();
+    did_resolver.add_did_doc(vectors.alice_did.clone(), vectors.alice_did_doc.clone());
+    did_resolver.add_did_doc(vectors.bob_did.clone(), vectors.bob_did_doc.clone());
 
-    let secrets_resolver = ExampleSecretsResolver::new(BOB_SECRETS.clone());
+    let alice_secrets = PQCTestSecretsResolver::new(vectors.alice_secrets);
+    let bob_secrets = PQCTestSecretsResolver::new(vectors.bob_secrets);
 
-    let (msg, metadata) = Message::unpack(
-        &msg,
+    // Create message
+    let message = Message::build(
+        "example-2".to_string(),
+        "https://example.com/protocols/hello/1.0/hello".to_string(),
+        json!({ "greetings": "Hello, Bob! This is Alice using PQC." }),
+    )
+    .to(vectors.bob_did.clone())
+    .from(vectors.alice_did.clone())
+    .finalize();
+
+    println!(
+        "Sending message: {}",
+        serde_json::to_string_pretty(&message).unwrap()
+    );
+
+    // Pack with encryption only (no signing - repudiable)
+    // Using ML-KEM-1024 to match the test vectors
+    let pack_options = PackEncryptedOptions {
+        enc_alg_auth: AuthCryptAlg::MlKem1024A256cbcHs512,
+        ..Default::default()
+    };
+
+    let (packed_msg, pack_metadata) = message
+        .pack_encrypted(
+            &vectors.bob_did,
+            Some(&vectors.alice_did),
+            None, // no signing - message is repudiable
+            &did_resolver,
+            &alice_secrets,
+            &pack_options,
+        )
+        .await
+        .expect("Failed to pack encrypted message");
+
+    println!("Packed Message: {packed_msg}");
+    println!("Pack Metadata: {pack_metadata:?}");
+
+    // Unpack message
+    let (unpacked_msg, unpack_metadata) = Message::unpack(
+        &packed_msg,
         &did_resolver,
-        &secrets_resolver,
+        &bob_secrets,
         &UnpackOptions::default(),
     )
     .await
-    .expect("Unable unpack");
+    .expect("Failed to unpack message");
 
-    println!("Bob received message is \n{:?}\n", msg);
-    println!("Bob received message unpack metadata is \n{:?}\n", metadata);
+    println!(
+        "Unpacked Message: {}",
+        serde_json::to_string_pretty(&unpacked_msg).unwrap()
+    );
+    println!("Unpack Metadata: {unpack_metadata:?}");
+
+    // Verify authenticated encryption properties
+    assert!(
+        !unpack_metadata.non_repudiation,
+        "Message should be repudiable"
+    );
+    assert!(
+        unpack_metadata.authenticated,
+        "Message should be authenticated"
+    );
+    assert!(unpack_metadata.encrypted, "Message should be encrypted");
+    assert!(
+        !unpack_metadata.anonymous_sender,
+        "Sender should not be anonymous"
+    );
+
+    println!("✅ PQC repudiable authenticated encryption successful!");
 }
 
-async fn multi_recipient() {
-    // --- Building message from ALICE to BOB and CHARLIE ---
-    let msg = Message::build(
-        "example-1".to_owned(),
-        "example/v1".to_owned(),
-        json!("example-body"),
+async fn pqc_anonymous_encryption() {
+    // Create PQC test vectors
+    let vectors = PQCTestVector::ml_kem_768_ml_dsa_65().expect("Failed to create PQC test vectors");
+
+    // Set up resolvers
+    let mut did_resolver = PQCTestDIDResolver::new();
+    did_resolver.add_did_doc(vectors.alice_did.clone(), vectors.alice_did_doc.clone());
+    did_resolver.add_did_doc(vectors.bob_did.clone(), vectors.bob_did_doc.clone());
+
+    let alice_secrets = PQCTestSecretsResolver::new(vectors.alice_secrets);
+    let bob_secrets = PQCTestSecretsResolver::new(vectors.bob_secrets);
+
+    // Create message
+    let message = Message::build(
+        "example-3".to_string(),
+        "https://example.com/protocols/hello/1.0/hello".to_string(),
+        json!({ "anonymous": "This message sender is anonymous" }),
     )
-    .to_many(vec![BOB_DID.to_owned(), CHARLIE_DID.to_owned()])
-    .from(ALICE_DID.to_owned())
-    .finalize();
+    .to(vectors.bob_did.clone())
+    .finalize(); // No from field - anonymous
 
-    // --- Packing encrypted and authenticated message for Bob ---
-    let did_resolver = ExampleDIDResolver::new(vec![
-        ALICE_DID_DOC.clone(),
-        BOB_DID_DOC.clone(),
-        CHARLIE_DID_DOC.clone(),
-        MEDIATOR1_DID_DOC.clone(),
-        MEDIATOR2_DID_DOC.clone(),
-        MEDIATOR3_DID_DOC.clone(),
-    ]);
+    println!(
+        "Sending message: {}",
+        serde_json::to_string_pretty(&message).unwrap()
+    );
 
-    let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
-
-    let (msg_bob, metadata_bob) = msg
+    // Pack with anonymous encryption only
+    let (packed_msg, pack_metadata) = message
         .pack_encrypted(
-            BOB_DID,
-            Some(ALICE_DID),
-            None,
+            &vectors.bob_did,
+            None, // no from - anonymous
+            None, // no signing
             &did_resolver,
-            &secrets_resolver,
+            &alice_secrets,
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Unable pack_encrypted");
+        .expect("Failed to pack encrypted message");
 
-    // --- Sending message by Alice to Bob ---
-    println!("Alice is sending message to Bob \n{}\n", msg_bob);
-    println!("Encryption metadata for Bob is\n{:?}\n", metadata_bob);
+    println!("Packed Message: {packed_msg}");
+    println!("Pack Metadata: {pack_metadata:?}");
 
-    // --- Packing encrypted and authenticated message for Charlie---
-
-    let (msg_charlie, metadata_charlie) = msg
-        .pack_encrypted(
-            CHARLIE_DID,
-            Some(ALICE_DID),
-            None,
-            &did_resolver,
-            &secrets_resolver,
-            &PackEncryptedOptions::default(),
-        )
-        .await
-        .expect("Unable pack_encrypted");
-
-    // --- Sending message by Alice to Charlie ---
-    println!("Alice is sending message to Charlie \n{}\n", msg_charlie);
+    // Unpack message
+    let (unpacked_msg, unpack_metadata) = Message::unpack(
+        &packed_msg,
+        &did_resolver,
+        &bob_secrets,
+        &UnpackOptions::default(),
+    )
+    .await
+    .expect("Failed to unpack message");
 
     println!(
-        "Encryption metadata for Charlie is\n{:?}\n",
-        metadata_charlie
+        "Unpacked Message: {}",
+        serde_json::to_string_pretty(&unpacked_msg).unwrap()
+    );
+    println!("Unpack Metadata: {unpack_metadata:?}");
+
+    // Verify anonymous encryption properties
+    assert!(
+        !unpack_metadata.non_repudiation,
+        "Message should be repudiable"
+    );
+    assert!(
+        !unpack_metadata.authenticated,
+        "Message should not be authenticated"
+    );
+    assert!(unpack_metadata.encrypted, "Message should be encrypted");
+    assert!(
+        unpack_metadata.anonymous_sender,
+        "Sender should be anonymous"
     );
 
-    // --- Unpacking message for Bob by Mediator1 ---
-    let did_resolver = ExampleDIDResolver::new(vec![
-        ALICE_DID_DOC.clone(),
-        BOB_DID_DOC.clone(),
-        CHARLIE_DID_DOC.clone(),
-        MEDIATOR1_DID_DOC.clone(),
-        MEDIATOR2_DID_DOC.clone(),
-        MEDIATOR3_DID_DOC.clone(),
-    ]);
-
-    let secrets_resolver = ExampleSecretsResolver::new(MEDIATOR1_SECRETS.clone());
-
-    let (msg, metadata) = Message::unpack(
-        &msg_bob,
-        &did_resolver,
-        &secrets_resolver,
-        &UnpackOptions::default(),
-    )
-    .await
-    .expect("Unable unpack");
-
-    println!("Mediator1 received message is \n{:?}\n", msg);
-
-    println!(
-        "Mediator1 received message unpack metadata is \n{:?}\n",
-        metadata
-    );
-
-    // --- Forwarding message by Mediator1 ---
-    let msg = serde_json::to_string(&try_parse_forward(&msg).unwrap().forwarded_msg).unwrap();
-
-    println!("Mediator1 is forwarding message \n{}\n", msg);
-
-    // --- Unpacking message by Bob ---
-    let did_resolver = ExampleDIDResolver::new(vec![
-        ALICE_DID_DOC.clone(),
-        BOB_DID_DOC.clone(),
-        CHARLIE_DID_DOC.clone(),
-        MEDIATOR1_DID_DOC.clone(),
-        MEDIATOR2_DID_DOC.clone(),
-        MEDIATOR3_DID_DOC.clone(),
-    ]);
-
-    let secrets_resolver = ExampleSecretsResolver::new(BOB_SECRETS.clone());
-
-    let (msg, metadata) = Message::unpack(
-        &msg,
-        &did_resolver,
-        &secrets_resolver,
-        &UnpackOptions::default(),
-    )
-    .await
-    .expect("Unable unpack");
-
-    println!("Bob received message is \n{:?}\n", msg);
-    println!("Bob received message unpack metadata is \n{:?}\n", metadata);
-
-    // --- Unpacking message for Charlie by Mediator3 ---
-    let did_resolver = ExampleDIDResolver::new(vec![
-        ALICE_DID_DOC.clone(),
-        BOB_DID_DOC.clone(),
-        CHARLIE_DID_DOC.clone(),
-        MEDIATOR1_DID_DOC.clone(),
-        MEDIATOR2_DID_DOC.clone(),
-        MEDIATOR3_DID_DOC.clone(),
-    ]);
-
-    let secrets_resolver = ExampleSecretsResolver::new(MEDIATOR3_SECRETS.clone());
-
-    let (msg, metadata) = Message::unpack(
-        &msg_charlie,
-        &did_resolver,
-        &secrets_resolver,
-        &UnpackOptions::default(),
-    )
-    .await
-    .expect("Unable unpack");
-
-    println!("Mediator3 received message is \n{:?}\n", msg);
-
-    println!(
-        "Mediator3 received message unpack metadata is \n{:?}\n",
-        metadata
-    );
-
-    // --- Forwarding message by Mediator3 ---
-    let msg = serde_json::to_string(&try_parse_forward(&msg).unwrap().forwarded_msg).unwrap();
-
-    println!("Mediator3 is forwarding message \n{}\n", msg);
-
-    // --- Unpacking message for Charlie by Mediator2 ---
-    let did_resolver = ExampleDIDResolver::new(vec![
-        ALICE_DID_DOC.clone(),
-        BOB_DID_DOC.clone(),
-        CHARLIE_DID_DOC.clone(),
-        MEDIATOR1_DID_DOC.clone(),
-        MEDIATOR2_DID_DOC.clone(),
-        MEDIATOR3_DID_DOC.clone(),
-    ]);
-
-    let secrets_resolver = ExampleSecretsResolver::new(MEDIATOR2_SECRETS.clone());
-
-    let (msg, metadata) = Message::unpack(
-        &msg,
-        &did_resolver,
-        &secrets_resolver,
-        &UnpackOptions::default(),
-    )
-    .await
-    .expect("Unable unpack");
-
-    println!("Mediator2 received message is \n{:?}\n", msg);
-
-    println!(
-        "Mediator2 received message unpack metadata is \n{:?}\n",
-        metadata
-    );
-
-    // --- Forwarding message by Mediator2 ---
-    let msg = serde_json::to_string(&try_parse_forward(&msg).unwrap().forwarded_msg).unwrap();
-
-    println!("Mediator2 is forwarding message \n{}\n", msg);
-
-    // --- Unpacking message for Charlie by Mediator1 ---
-    let did_resolver = ExampleDIDResolver::new(vec![
-        ALICE_DID_DOC.clone(),
-        BOB_DID_DOC.clone(),
-        CHARLIE_DID_DOC.clone(),
-        MEDIATOR1_DID_DOC.clone(),
-        MEDIATOR2_DID_DOC.clone(),
-        MEDIATOR3_DID_DOC.clone(),
-    ]);
-
-    let secrets_resolver = ExampleSecretsResolver::new(MEDIATOR1_SECRETS.clone());
-
-    let (msg, metadata) = Message::unpack(
-        &msg,
-        &did_resolver,
-        &secrets_resolver,
-        &UnpackOptions::default(),
-    )
-    .await
-    .expect("Unable unpack");
-
-    println!("Mediator1 received message is \n{:?}\n", msg);
-
-    println!(
-        "Mediator1 received message unpack metadata is \n{:?}\n",
-        metadata
-    );
-
-    // --- Forwarding message by Mediator1 ---
-    let msg = serde_json::to_string(&try_parse_forward(&msg).unwrap().forwarded_msg).unwrap();
-
-    println!("Mediator1 is forwarding message \n{}\n", msg);
-
-    // --- Unpacking message by Charlie ---
-    let did_resolver = ExampleDIDResolver::new(vec![
-        ALICE_DID_DOC.clone(),
-        BOB_DID_DOC.clone(),
-        CHARLIE_DID_DOC.clone(),
-        MEDIATOR1_DID_DOC.clone(),
-        MEDIATOR2_DID_DOC.clone(),
-        MEDIATOR3_DID_DOC.clone(),
-    ]);
-
-    let secrets_resolver = ExampleSecretsResolver::new(CHARLIE_SECRETS.clone());
-
-    let (msg, metadata) = Message::unpack(
-        &msg,
-        &did_resolver,
-        &secrets_resolver,
-        &UnpackOptions::default(),
-    )
-    .await
-    .expect("Unable unpack");
-
-    println!("Charlie received message is \n{:?}\n", msg);
-
-    println!(
-        "Charlie received message unpack metadata is \n{:?}\n",
-        metadata
-    );
-}
-
-async fn repudiable_authenticated_encryption() {
-    // --- Building message from ALICE to BOB ---
-    let msg = Message::build(
-        "example-1".to_owned(),
-        "example/v1".to_owned(),
-        json!("example-body"),
-    )
-    .to(BOB_DID.to_owned())
-    .from(ALICE_DID.to_owned())
-    .finalize();
-
-    // --- Packing encrypted and authenticated message ---
-    let did_resolver = ExampleDIDResolver::new(vec![
-        ALICE_DID_DOC.clone(),
-        BOB_DID_DOC.clone(),
-        MEDIATOR1_DID_DOC.clone(),
-    ]);
-
-    let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
-
-    let (msg, metadata) = msg
-        .pack_encrypted(
-            BOB_DID,
-            Some(ALICE_DID),
-            None,
-            &did_resolver,
-            &secrets_resolver,
-            &PackEncryptedOptions::default(),
-        )
-        .await
-        .expect("Unable pack_encrypted");
-
-    println!("Encryption metadata is\n{:?}\n", metadata);
-
-    // --- Sending message by Alice ---
-    println!("Alice is sending message \n{}\n", msg);
-
-    // --- Unpacking message by Mediator1 ---
-    let did_resolver = ExampleDIDResolver::new(vec![
-        ALICE_DID_DOC.clone(),
-        BOB_DID_DOC.clone(),
-        MEDIATOR1_DID_DOC.clone(),
-    ]);
-
-    let secrets_resolver = ExampleSecretsResolver::new(MEDIATOR1_SECRETS.clone());
-
-    let (msg, metadata) = Message::unpack(
-        &msg,
-        &did_resolver,
-        &secrets_resolver,
-        &UnpackOptions::default(),
-    )
-    .await
-    .expect("Unable unpack");
-
-    println!("Mediator1 received message is \n{:?}\n", msg);
-
-    println!(
-        "Mediator1 received message unpack metadata is \n{:?}\n",
-        metadata
-    );
-
-    // --- Forwarding message by Mediator1 ---
-    let msg = serde_json::to_string(&try_parse_forward(&msg).unwrap().forwarded_msg).unwrap();
-
-    println!("Mediator1 is forwarding message \n{}\n", msg);
-
-    // --- Unpacking message by Bob ---
-    let did_resolver = ExampleDIDResolver::new(vec![
-        ALICE_DID_DOC.clone(),
-        BOB_DID_DOC.clone(),
-        MEDIATOR1_DID_DOC.clone(),
-    ]);
-
-    let secrets_resolver = ExampleSecretsResolver::new(BOB_SECRETS.clone());
-
-    let (msg, metadata) = Message::unpack(
-        &msg,
-        &did_resolver,
-        &secrets_resolver,
-        &UnpackOptions::default(),
-    )
-    .await
-    .expect("Unable unpack");
-
-    println!("Bob received message is \n{:?}\n", msg);
-    println!("Bob received message unpack metadata is \n{:?}\n", metadata);
-}
-
-async fn repudiable_non_authenticated_encryption() {
-    // --- Building message from ALICE to BOB ---
-    let msg = Message::build(
-        "example-1".to_owned(),
-        "example/v1".to_owned(),
-        json!("example-body"),
-    )
-    .to(BOB_DID.to_owned())
-    .from(ALICE_DID.to_owned())
-    .finalize();
-
-    // --- Packing encrypted message ---
-    let did_resolver = ExampleDIDResolver::new(vec![
-        ALICE_DID_DOC.clone(),
-        BOB_DID_DOC.clone(),
-        MEDIATOR1_DID_DOC.clone(),
-    ]);
-
-    let secrets_resolver = ExampleSecretsResolver::new(vec![]);
-
-    let (msg, metadata) = msg
-        .pack_encrypted(
-            BOB_DID,
-            None,
-            None,
-            &did_resolver,
-            &secrets_resolver,
-            &PackEncryptedOptions::default(),
-        )
-        .await
-        .expect("Unable pack_encrypted");
-
-    println!("Encryption metadata is\n{:?}\n", metadata);
-
-    // --- Sending message by Alice ---
-    println!("Alice is sending message \n{}\n", msg);
-
-    // --- Unpacking message by Mediator1 ---
-    let did_resolver = ExampleDIDResolver::new(vec![
-        ALICE_DID_DOC.clone(),
-        BOB_DID_DOC.clone(),
-        MEDIATOR1_DID_DOC.clone(),
-    ]);
-
-    let secrets_resolver = ExampleSecretsResolver::new(MEDIATOR1_SECRETS.clone());
-
-    let (msg, metadata) = Message::unpack(
-        &msg,
-        &did_resolver,
-        &secrets_resolver,
-        &UnpackOptions::default(),
-    )
-    .await
-    .expect("Unable unpack");
-
-    println!("Mediator1 received message is \n{:?}\n", msg);
-
-    println!(
-        "Mediator1 received message unpack metadata is \n{:?}\n",
-        metadata
-    );
-
-    // --- Forwarding message by Mediator1 ---
-    let msg = serde_json::to_string(&try_parse_forward(&msg).unwrap().forwarded_msg).unwrap();
-
-    println!("Mediator1 is forwarding message \n{}\n", msg);
-
-    // --- Unpacking message by Bob ---
-    let did_resolver = ExampleDIDResolver::new(vec![
-        ALICE_DID_DOC.clone(),
-        BOB_DID_DOC.clone(),
-        MEDIATOR1_DID_DOC.clone(),
-    ]);
-
-    let secrets_resolver = ExampleSecretsResolver::new(BOB_SECRETS.clone());
-
-    let (msg, metadata) = Message::unpack(
-        &msg,
-        &did_resolver,
-        &secrets_resolver,
-        &UnpackOptions::default(),
-    )
-    .await
-    .expect("Unable unpack");
-
-    println!("Bob received message is \n{:?}\n", msg);
-    println!("Bob received message unpack metadata is \n{:?}\n", metadata);
-}
-
-async fn signed_unencrypted() {
-    // --- Building message from ALICE to BOB ---
-    let msg = Message::build(
-        "example-1".to_owned(),
-        "example/v1".to_owned(),
-        json!("example-body"),
-    )
-    .to(BOB_DID.to_owned())
-    .from(ALICE_DID.to_owned())
-    .finalize();
-
-    // --- Packing signed message ---
-    let did_resolver = ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
-    let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
-
-    let (msg, metadata) = msg
-        .pack_signed(ALICE_DID, &did_resolver, &secrets_resolver)
-        .await
-        .expect("Unable pack_signed");
-
-    println!("Encryption metadata is\n{:?}\n", metadata);
-
-    // --- Sending message ---
-    println!("Sending message \n{}\n", msg);
-
-    // --- Unpacking message ---
-    let did_resolver = ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
-    let secrets_resolver = ExampleSecretsResolver::new(vec![]);
-
-    let (msg, metadata) = Message::unpack(
-        &msg,
-        &did_resolver,
-        &secrets_resolver,
-        &UnpackOptions::default(),
-    )
-    .await
-    .expect("Unable unpack");
-
-    println!("Received message is \n{:?}\n", msg);
-    println!("Received message unpack metadata is \n{:?}\n", metadata);
-}
-
-async fn plaintext_unencrypted() {
-    // --- Building message from ALICE to BOB ---
-    let msg = Message::build(
-        "example-1".to_owned(),
-        "example/v1".to_owned(),
-        json!("example-body"),
-    )
-    .to(BOB_DID.to_owned())
-    .from(ALICE_DID.to_owned())
-    .finalize();
-
-    // --- Packing plaintext message ---
-    let did_resolver = ExampleDIDResolver::new(vec![]);
-
-    let msg = msg
-        .pack_plaintext(&did_resolver)
-        .await
-        .expect("Unable pack_plaintext");
-
-    // --- Sending message ---
-    println!("Sending message \n{}\n", msg);
-
-    // --- Unpacking message ---
-    let did_resolver = ExampleDIDResolver::new(vec![]);
-    let secrets_resolver = ExampleSecretsResolver::new(vec![]);
-
-    let (msg, metadata) = Message::unpack(
-        &msg,
-        &did_resolver,
-        &secrets_resolver,
-        &UnpackOptions::default(),
-    )
-    .await
-    .expect("Unable unpack");
-
-    println!("Received message is \n{:?}\n", msg);
-    println!("Received message unpack metadata is \n{:?}\n", metadata);
+    println!("✅ PQC anonymous encryption successful!");
 }
