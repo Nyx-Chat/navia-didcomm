@@ -305,7 +305,7 @@ pub struct LinksAttachmentData {
 
 #[cfg(test)]
 mod tests {
-    use core::panic;
+    // use core::panic; // Unused import removed
     use serde_json::json;
 
     use super::*;
@@ -325,7 +325,7 @@ mod tests {
 
         let data = match attachment.data {
             AttachmentData::Base64 { ref value } => value,
-            _ => panic!("data isn't base64."),
+            _ => unreachable!("test expects base64 data"),
         };
 
         assert_eq!(data.base64, "ZXhhbXBsZQ==");
@@ -359,7 +359,7 @@ mod tests {
 
         let data = match attachment.data {
             AttachmentData::Json { ref value } => value,
-            _ => panic!("data isn't json."),
+            _ => unreachable!("test expects json data"),
         };
 
         assert_eq!(data.json, json!("example"));
@@ -396,7 +396,7 @@ mod tests {
 
         let data = match attachment.data {
             AttachmentData::Links { ref value } => value,
-            _ => panic!("data isn't links."),
+            _ => unreachable!("test expects links data"),
         };
 
         assert_eq!(

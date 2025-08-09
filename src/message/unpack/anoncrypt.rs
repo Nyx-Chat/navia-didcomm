@@ -1,17 +1,9 @@
-use askar_crypto::{
-    alg::{
-        aes::{A256CbcHs512, A256Gcm, A256Kw, AesKey},
-        chacha20::{Chacha20Key, XC20P},
-        p256::P256KeyPair,
-        x25519::X25519KeyPair,
-    },
-    kdf::ecdh_es::EcdhEs,
-};
+// PQC-only - classical algorithms removed
 
 use crate::{
     algorithms::AnonCryptAlg,
     error::{err_msg, ErrorKind, Result, ResultExt},
-    jwe::{self, envelope::JWE},
+    pqc_jwe as jwe,
     secrets::SecretsResolver,
     utils::{
         crypto::{AsKnownKeyPair, KnownKeyPair},
@@ -26,7 +18,7 @@ pub(crate) async fn _try_unpack_anoncrypt<'sr>(
     opts: &UnpackOptions,
     metadata: &mut UnpackMetadata,
 ) -> Result<Option<String>> {
-    let jwe = match JWE::from_str(msg) {
+    let jwe = match jwe::JWE::from_str(msg) {
         Ok(m) => m,
         Err(e) if e.kind() == ErrorKind::Malformed => return Ok(None),
         Err(e) => Err(e)?,
@@ -35,17 +27,21 @@ pub(crate) async fn _try_unpack_anoncrypt<'sr>(
     let mut buf = vec![];
     let parsed_jwe = jwe.parse(&mut buf)?;
 
-    if parsed_jwe.protected.alg != jwe::Algorithm::EcdhEsA256kw {
-        return Ok(None);
+    // Only support PQC algorithms (ML-KEM) - reject classical crypto
+    match parsed_jwe.protected.alg {
+        jwe::Algorithm::MlKem768 | jwe::Algorithm::MlKem1024 => {
+            // PQC anoncrypt - continue processing
+        }
+        _ => return Ok(None),
     }
 
     let parsed_jwe = parsed_jwe.verify_didcomm()?;
 
-    let to_kids: Vec<_> = parsed_jwe
+    let to_kids: Vec<&str> = parsed_jwe
         .jwe
         .recipients
         .iter()
-        .map(|r| r.header.kid)
+        .map(|r| r.header.kid.as_str())
         .collect();
 
     let to_kid = to_kids
@@ -92,66 +88,154 @@ pub(crate) async fn _try_unpack_anoncrypt<'sr>(
             })?
             .as_key_pair()?;
 
-        let _payload = match (to_key, &parsed_jwe.protected.enc) {
-            (KnownKeyPair::X25519(ref to_key), jwe::EncAlgorithm::A256cbcHs512) => {
-                metadata.enc_alg_anon = Some(AnonCryptAlg::A256cbcHs512EcdhEsA256kw);
+        let payload_bytes = match (to_key, &parsed_jwe.protected.enc) {
+            (KnownKeyPair::MlKem768(ref to_key), jwe::EncAlgorithm::A256Gcm) => {
+                metadata.enc_alg_anon = Some(AnonCryptAlg::MlKem768A256gcm);
 
-                parsed_jwe.decrypt::<
-                        AesKey<A256CbcHs512>,
-                        EcdhEs<'_, X25519KeyPair>,
-                        X25519KeyPair,
-                        AesKey<A256Kw>,
-                    >(None, (to_kid, to_key))?
+                use crate::pqc_jwe::decrypt_anon_ml_kem_768;
+                use askar_crypto::alg::aes::{A256Gcm, AesKey};
+                use base64::prelude::*;
+
+                let recipient = parsed_jwe
+                    .jwe
+                    .recipients
+                    .iter()
+                    .find(|r| r.header.kid == to_kid)
+                    .ok_or_else(|| err_msg(ErrorKind::Malformed, "Recipient not found"))?;
+
+                let encrypted_key = BASE64_URL_SAFE_NO_PAD
+                    .decode(&recipient.encrypted_key)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in encrypted_key")?;
+                let iv = BASE64_URL_SAFE_NO_PAD
+                    .decode(&parsed_jwe.jwe.iv)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in iv")?;
+                let ciphertext = BASE64_URL_SAFE_NO_PAD
+                    .decode(&parsed_jwe.jwe.ciphertext)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in ciphertext")?;
+                let tag = BASE64_URL_SAFE_NO_PAD
+                    .decode(&parsed_jwe.jwe.tag)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in tag")?;
+
+                decrypt_anon_ml_kem_768::<AesKey<A256Gcm>>(
+                    &encrypted_key,
+                    &iv,
+                    &ciphertext,
+                    &tag,
+                    &parsed_jwe.jwe.protected,
+                    &recipient.header.kid,
+                    to_key,
+                )?
             }
-            (KnownKeyPair::X25519(ref to_key), jwe::EncAlgorithm::Xc20P) => {
-                metadata.enc_alg_anon = Some(AnonCryptAlg::Xc20pEcdhEsA256kw);
+            (KnownKeyPair::MlKem768(ref to_key), jwe::EncAlgorithm::Xc20P) => {
+                metadata.enc_alg_anon = Some(AnonCryptAlg::MlKem768Xc20p);
 
-                parsed_jwe.decrypt::<
-                        Chacha20Key<XC20P>,
-                        EcdhEs<'_, X25519KeyPair>,
-                        X25519KeyPair,
-                        AesKey<A256Kw>,
-                    >(None, (to_kid, to_key))?
+                use crate::pqc_jwe::decrypt_anon_ml_kem_768;
+                use askar_crypto::alg::chacha20::{Chacha20Key, XC20P};
+                use base64::prelude::*;
+
+                let recipient = parsed_jwe
+                    .jwe
+                    .recipients
+                    .iter()
+                    .find(|r| r.header.kid == to_kid)
+                    .ok_or_else(|| err_msg(ErrorKind::Malformed, "Recipient not found"))?;
+
+                let encrypted_key = BASE64_URL_SAFE_NO_PAD
+                    .decode(&recipient.encrypted_key)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in encrypted_key")?;
+                let iv = BASE64_URL_SAFE_NO_PAD
+                    .decode(&parsed_jwe.jwe.iv)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in iv")?;
+                let ciphertext = BASE64_URL_SAFE_NO_PAD
+                    .decode(&parsed_jwe.jwe.ciphertext)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in ciphertext")?;
+                let tag = BASE64_URL_SAFE_NO_PAD
+                    .decode(&parsed_jwe.jwe.tag)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in tag")?;
+
+                decrypt_anon_ml_kem_768::<Chacha20Key<XC20P>>(
+                    &encrypted_key,
+                    &iv,
+                    &ciphertext,
+                    &tag,
+                    &parsed_jwe.jwe.protected,
+                    &recipient.header.kid,
+                    to_key,
+                )?
             }
-            (KnownKeyPair::X25519(ref to_key), jwe::EncAlgorithm::A256Gcm) => {
-                metadata.enc_alg_anon = Some(AnonCryptAlg::A256gcmEcdhEsA256kw);
+            (KnownKeyPair::MlKem1024(ref to_key), jwe::EncAlgorithm::A256Gcm) => {
+                metadata.enc_alg_anon = Some(AnonCryptAlg::MlKem1024A256gcm);
 
-                parsed_jwe.decrypt::<
-                        AesKey<A256Gcm>,
-                        EcdhEs<'_, X25519KeyPair>,
-                        X25519KeyPair,
-                        AesKey<A256Kw>,
-                    >(None, (to_kid, to_key))?
+                use crate::pqc_jwe::decrypt_anon_ml_kem_1024;
+                use askar_crypto::alg::aes::{A256Gcm, AesKey};
+                use base64::prelude::*;
+
+                let recipient = parsed_jwe
+                    .jwe
+                    .recipients
+                    .iter()
+                    .find(|r| r.header.kid == to_kid)
+                    .ok_or_else(|| err_msg(ErrorKind::Malformed, "Recipient not found"))?;
+
+                let encrypted_key = BASE64_URL_SAFE_NO_PAD
+                    .decode(&recipient.encrypted_key)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in encrypted_key")?;
+                let iv = BASE64_URL_SAFE_NO_PAD
+                    .decode(&parsed_jwe.jwe.iv)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in iv")?;
+                let ciphertext = BASE64_URL_SAFE_NO_PAD
+                    .decode(&parsed_jwe.jwe.ciphertext)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in ciphertext")?;
+                let tag = BASE64_URL_SAFE_NO_PAD
+                    .decode(&parsed_jwe.jwe.tag)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in tag")?;
+
+                decrypt_anon_ml_kem_1024::<AesKey<A256Gcm>>(
+                    &encrypted_key,
+                    &iv,
+                    &ciphertext,
+                    &tag,
+                    &parsed_jwe.jwe.protected,
+                    &recipient.header.kid,
+                    to_key,
+                )?
             }
-            (KnownKeyPair::P256(ref to_key), jwe::EncAlgorithm::A256cbcHs512) => {
-                metadata.enc_alg_anon = Some(AnonCryptAlg::A256cbcHs512EcdhEsA256kw);
+            (KnownKeyPair::MlKem1024(ref to_key), jwe::EncAlgorithm::Xc20P) => {
+                metadata.enc_alg_anon = Some(AnonCryptAlg::MlKem1024Xc20p);
 
-                parsed_jwe.decrypt::<
-                        AesKey<A256CbcHs512>,
-                        EcdhEs<'_, P256KeyPair>,
-                        P256KeyPair,
-                        AesKey<A256Kw>,
-                    >(None, (to_kid, to_key))?
-            }
-            (KnownKeyPair::P256(ref to_key), jwe::EncAlgorithm::Xc20P) => {
-                metadata.enc_alg_anon = Some(AnonCryptAlg::Xc20pEcdhEsA256kw);
+                use crate::pqc_jwe::decrypt_anon_ml_kem_1024;
+                use askar_crypto::alg::chacha20::{Chacha20Key, XC20P};
+                use base64::prelude::*;
 
-                parsed_jwe.decrypt::<
-                        Chacha20Key<XC20P>,
-                        EcdhEs<'_, P256KeyPair>,
-                        P256KeyPair,
-                        AesKey<A256Kw>,
-                    >(None, (to_kid, to_key))?
-            }
-            (KnownKeyPair::P256(ref to_key), jwe::EncAlgorithm::A256Gcm) => {
-                metadata.enc_alg_anon = Some(AnonCryptAlg::A256gcmEcdhEsA256kw);
+                let recipient = parsed_jwe
+                    .jwe
+                    .recipients
+                    .iter()
+                    .find(|r| r.header.kid == to_kid)
+                    .ok_or_else(|| err_msg(ErrorKind::Malformed, "Recipient not found"))?;
 
-                parsed_jwe.decrypt::<
-                        AesKey<A256Gcm>,
-                        EcdhEs<'_, P256KeyPair>,
-                        P256KeyPair,
-                        AesKey<A256Kw>,
-                    >(None, (to_kid, to_key))?
+                let encrypted_key = BASE64_URL_SAFE_NO_PAD
+                    .decode(&recipient.encrypted_key)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in encrypted_key")?;
+                let iv = BASE64_URL_SAFE_NO_PAD
+                    .decode(&parsed_jwe.jwe.iv)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in iv")?;
+                let ciphertext = BASE64_URL_SAFE_NO_PAD
+                    .decode(&parsed_jwe.jwe.ciphertext)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in ciphertext")?;
+                let tag = BASE64_URL_SAFE_NO_PAD
+                    .decode(&parsed_jwe.jwe.tag)
+                    .kind(ErrorKind::Malformed, "Invalid base64 in tag")?;
+
+                decrypt_anon_ml_kem_1024::<Chacha20Key<XC20P>>(
+                    &encrypted_key,
+                    &iv,
+                    &ciphertext,
+                    &tag,
+                    &parsed_jwe.jwe.protected,
+                    &recipient.header.kid,
+                    to_key,
+                )?
             }
             _ => Err(err_msg(
                 ErrorKind::Unsupported,
@@ -159,7 +243,7 @@ pub(crate) async fn _try_unpack_anoncrypt<'sr>(
             ))?,
         };
 
-        payload = Some(_payload);
+        payload = Some(payload_bytes);
 
         if !opts.expect_decrypt_by_all_keys {
             break;

@@ -39,14 +39,32 @@ pub struct VerificationMethod {
     pub verification_material: VerificationMaterial,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum VerificationMethodType {
+    /// ML-KEM-768 key agreement method
+    /// NIST FIPS 203 standardized key encapsulation mechanism
+    #[serde(rename = "MlKem768KeyAgreementKey2025")]
+    MlKem768KeyAgreementKey2025,
+
+    /// ML-KEM-1024 key agreement method
+    /// NIST FIPS 203 standardized key encapsulation mechanism  
+    #[serde(rename = "MlKem1024KeyAgreementKey2025")]
+    MlKem1024KeyAgreementKey2025,
+
+    /// ML-DSA-65 verification method
+    /// NIST FIPS 204 standardized digital signature algorithm (Dilithium3)
+    #[serde(rename = "MlDsa65VerificationKey2025")]
+    MlDsa65VerificationKey2025,
+
+    /// ML-DSA-87 verification method
+    /// NIST FIPS 204 standardized digital signature algorithm (Dilithium5)
+    #[serde(rename = "MlDsa87VerificationKey2025")]
+    MlDsa87VerificationKey2025,
+
+    // Legacy support for test vectors (non-functional, PQC-only in production)
+    #[serde(rename = "JsonWebKey2020")]
     JsonWebKey2020,
-    X25519KeyAgreementKey2019,
-    Ed25519VerificationKey2018,
-    EcdsaSecp256k1VerificationKey2019,
-    X25519KeyAgreementKey2020,
-    Ed25519VerificationKey2020,
+    // PQC-only - classical crypto verification key types removed
     Other,
 }
 

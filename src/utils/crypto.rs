@@ -1,21 +1,15 @@
 use askar_crypto::{
-    alg::{
-        aes::{A128Kw, A256Kw, AesKey},
-        ed25519::Ed25519KeyPair,
-        k256::K256KeyPair,
-        p256::P256KeyPair,
-        p384::P384KeyPair,
-        x25519::X25519KeyPair,
-    },
+    alg::aes::{A128Kw, A256Kw, AesKey},
     buffer::SecretBytes,
     encrypt::KeyAeadInPlace,
-    kdf::{ecdh_1pu::Ecdh1PU, ecdh_es::EcdhEs, FromKeyDerivation, KeyExchange},
+    kdf::KeyExchange, // PQC-only - ECDH and FromKeyDerivation imports removed
     repr::{KeySecretBytes, ToSecretBytes},
 };
 
 use crate::error::{err_msg, ErrorKind, Result, ResultExt};
 
 /// Note this trait is compatible with KW algorithms only
+#[allow(dead_code)]
 pub(crate) trait KeyWrap: KeyAeadInPlace {
     fn wrap_key<K: KeyAeadInPlace + ToSecretBytes>(&self, key: &K) -> Result<SecretBytes> {
         let params = self.aead_params();
@@ -52,6 +46,7 @@ impl KeyWrap for AesKey<A256Kw> {}
 
 impl KeyWrap for AesKey<A128Kw> {}
 
+#[allow(dead_code)]
 pub(crate) trait JoseKDF<Key: KeyExchange, KW: KeyWrap + Sized> {
     fn derive_key(
         ephem_key: &Key,
@@ -65,130 +60,73 @@ pub(crate) trait JoseKDF<Key: KeyExchange, KW: KeyWrap + Sized> {
     ) -> Result<KW>;
 }
 
-impl<Key: KeyExchange, KW: KeyWrap + FromKeyDerivation + Sized> JoseKDF<Key, KW>
-    for Ecdh1PU<'_, Key>
-{
-    fn derive_key(
-        ephem_key: &Key,
-        send_key: Option<&Key>,
-        recip_key: &Key,
-        alg: &[u8],
-        apu: &[u8],
-        apv: &[u8],
-        cc_tag: &[u8],
-        receive: bool,
-    ) -> Result<KW> {
-        let send_key = send_key
-            .ok_or_else(|| err_msg(ErrorKind::InvalidState, "No sender key for ecdh-1pu"))?;
-        let deriviation = Ecdh1PU::new(
-            ephem_key, send_key, recip_key, alg, apu, apv, cc_tag, receive,
-        );
-
-        let kw = KW::from_key_derivation(deriviation)
-            .kind(ErrorKind::InvalidState, "Unable derive kw")?;
-
-        Ok(kw)
-    }
-}
-
-impl<Key: KeyExchange, KW: KeyWrap + FromKeyDerivation + Sized> JoseKDF<Key, KW>
-    for EcdhEs<'_, Key>
-{
-    fn derive_key(
-        ephem_key: &Key,
-        _send_key: Option<&Key>,
-        recip_key: &Key,
-        alg: &[u8],
-        apu: &[u8],
-        apv: &[u8],
-        _cc_tag: &[u8],
-        receive: bool,
-    ) -> Result<KW> {
-        let deriviation = EcdhEs::new(ephem_key, recip_key, alg, apu, apv, receive);
-
-        let kw = KW::from_key_derivation(deriviation)
-            .kind(ErrorKind::InvalidState, "Unable derive kw")?;
-
-        Ok(kw)
-    }
-}
+// PQC-only - ECDH-1PU and ECDH-ES implementations removed
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum KnownKeyAlg {
-    Ed25519,
-    X25519,
-    P256,
-    P384,
-    K256,
+    // Post-Quantum algorithms only
+    MlKem768,
+    MlKem1024,
+    MlDsa65,
+    MlDsa87,
     Unsupported,
 }
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum KnownKeyPair {
-    Ed25519(Ed25519KeyPair),
-    X25519(X25519KeyPair),
-    P256(P256KeyPair),
-    #[allow(dead_code)]
-    P384(P384KeyPair),
-    K256(K256KeyPair),
+    // Post-Quantum algorithms only
+    MlKem768(crate::utils::pqc::MlKem768KeyPair),
+    MlKem1024(crate::utils::pqc::MlKem1024KeyPair),
+    MlDsa65(crate::utils::pqc::MlDsa65KeyPair),
+    MlDsa87(crate::utils::pqc::MlDsa87KeyPair),
 }
 
 pub(crate) trait AsKnownKeyPair {
     fn key_alg(&self) -> KnownKeyAlg;
     fn as_key_pair(&self) -> Result<KnownKeyPair>;
 
-    fn as_ed25519(&self) -> Result<Ed25519KeyPair> {
-        if self.key_alg() != KnownKeyAlg::Ed25519 {
+    // Post-Quantum key extraction methods only
+    fn as_ml_kem_768(&self) -> Result<crate::utils::pqc::MlKem768KeyPair> {
+        if self.key_alg() != KnownKeyAlg::MlKem768 {
             Err(err_msg(ErrorKind::InvalidState, "Unexpected key alg"))?
         }
 
         match self.as_key_pair()? {
-            KnownKeyPair::Ed25519(k) => Ok(k),
+            KnownKeyPair::MlKem768(k) => Ok(k),
             _ => Err(err_msg(ErrorKind::InvalidState, "Unexpected key pair type"))?,
         }
     }
 
-    fn as_x25519(&self) -> Result<X25519KeyPair> {
-        if self.key_alg() != KnownKeyAlg::X25519 {
+    fn as_ml_kem_1024(&self) -> Result<crate::utils::pqc::MlKem1024KeyPair> {
+        if self.key_alg() != KnownKeyAlg::MlKem1024 {
             Err(err_msg(ErrorKind::InvalidState, "Unexpected key alg"))?
         }
 
         match self.as_key_pair()? {
-            KnownKeyPair::X25519(k) => Ok(k),
+            KnownKeyPair::MlKem1024(k) => Ok(k),
             _ => Err(err_msg(ErrorKind::InvalidState, "Unexpected key pair type"))?,
         }
     }
 
-    fn as_p256(&self) -> Result<P256KeyPair> {
-        if self.key_alg() != KnownKeyAlg::P256 {
+    fn as_ml_dsa_65(&self) -> Result<crate::utils::pqc::MlDsa65KeyPair> {
+        if self.key_alg() != KnownKeyAlg::MlDsa65 {
             Err(err_msg(ErrorKind::InvalidState, "Unexpected key alg"))?
         }
 
         match self.as_key_pair()? {
-            KnownKeyPair::P256(k) => Ok(k),
+            KnownKeyPair::MlDsa65(k) => Ok(k),
             _ => Err(err_msg(ErrorKind::InvalidState, "Unexpected key pair type"))?,
         }
     }
 
-    #[allow(dead_code)]
-    fn as_p384(&self) -> Result<P384KeyPair> {
-        if self.key_alg() != KnownKeyAlg::P384 {
+    fn as_ml_dsa_87(&self) -> Result<crate::utils::pqc::MlDsa87KeyPair> {
+        if self.key_alg() != KnownKeyAlg::MlDsa87 {
             Err(err_msg(ErrorKind::InvalidState, "Unexpected key alg"))?
         }
 
         match self.as_key_pair()? {
-            KnownKeyPair::P384(k) => Ok(k),
-            _ => Err(err_msg(ErrorKind::InvalidState, "Unexpected key pair type"))?,
-        }
-    }
-
-    fn as_k256(&self) -> Result<K256KeyPair> {
-        if self.key_alg() != KnownKeyAlg::K256 {
-            Err(err_msg(ErrorKind::InvalidState, "Unexpected key alg"))?
-        }
-
-        match self.as_key_pair()? {
-            KnownKeyPair::K256(k) => Ok(k),
+            KnownKeyPair::MlDsa87(k) => Ok(k),
             _ => Err(err_msg(ErrorKind::InvalidState, "Unexpected key pair type"))?,
         }
     }

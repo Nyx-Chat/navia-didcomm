@@ -35,6 +35,7 @@ impl<'r> CachingDIDResolver<'r> {
     }
 
     #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn get_resolution_count(&self) -> usize {
         self.resolution_count.load(Ordering::Relaxed)
     }
@@ -63,21 +64,53 @@ impl<'r> DIDResolver for CachingDIDResolver<'r> {
     }
 }
 
+// PQC-only tests implemented
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::did::resolvers::ExampleDIDResolver;
-    use crate::test_vectors::*;
+    use crate::did::{
+        DIDCommMessagingService, DIDDoc, Service, ServiceKind, VerificationMaterial,
+        VerificationMethod, VerificationMethodType,
+    };
+
+    fn create_pqc_did_doc(did: &str, key_id: &str) -> DIDDoc {
+        DIDDoc {
+            id: did.to_string(),
+            verification_method: vec![VerificationMethod {
+                id: format!("{did}#{key_id}"),
+                type_: VerificationMethodType::MlKem768KeyAgreementKey2025,
+                controller: did.to_string(),
+                verification_material: VerificationMaterial::Multibase {
+                    public_key_multibase: "z123456789abcdef".to_string(),
+                },
+            }],
+            authentication: vec![],
+            key_agreement: vec![format!("{}#{}", did, key_id)],
+            service: vec![Service {
+                id: format!("{did}/service"),
+                service_endpoint: ServiceKind::DIDCommMessaging {
+                    value: DIDCommMessagingService {
+                        uri: "https://example.com/didcomm".to_string(),
+                        accept: None,
+                        routing_keys: vec![],
+                    },
+                },
+            }],
+        }
+    }
 
     #[tokio::test]
     async fn test_caching_resolver_avoids_duplicate_resolutions() {
-        let base_resolver =
-            ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), BOB_DID_DOC.clone()]);
+        let alice_did = "did:example:alice";
+        let bob_did = "did:example:bob";
+        let alice_doc = create_pqc_did_doc(alice_did, "ml-kem-key-1");
+        let bob_doc = create_pqc_did_doc(bob_did, "ml-kem-key-1");
 
+        let base_resolver = ExampleDIDResolver::new(vec![alice_doc.clone(), bob_doc.clone()]);
         let caching_resolver = CachingDIDResolver::new(&base_resolver);
 
         // First resolution should hit the underlying resolver
-        let alice_did = "did:example:alice";
         let result1 = caching_resolver.resolve(alice_did).await.unwrap();
         assert!(result1.is_some());
         assert_eq!(caching_resolver.get_resolution_count(), 1);
@@ -88,7 +121,6 @@ mod tests {
         assert_eq!(caching_resolver.get_resolution_count(), 1); // Still 1!
 
         // Different DID should hit underlying resolver
-        let bob_did = "did:example:bob";
         let result3 = caching_resolver.resolve(bob_did).await.unwrap();
         assert!(result3.is_some());
         assert_eq!(caching_resolver.get_resolution_count(), 2);

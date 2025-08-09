@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/License-Proprietary-red.svg)](./LICENSE)
 [![GitHub Package Registry](https://img.shields.io/badge/GitHub%20Packages-private-blue.svg)](https://github.com/nyx-chat/navia-didcomm/packages)
 [![Build Status](https://github.com/nyx-chat/navia-didcomm/workflows/PR%20Validation/badge.svg)](https://github.com/nyx-chat/navia-didcomm/actions)
-[![Tests](https://img.shields.io/badge/tests-190%20passing-green.svg)](https://github.com/nyx-chat/navia-didcomm/actions)
+[![Tests](https://img.shields.io/badge/tests-62%20passing-green.svg)](https://github.com/nyx-chat/navia-didcomm/actions)
 
 **Production-ready DIDComm v2 implementation for secure peer-to-peer messaging**
 
@@ -13,15 +13,17 @@ Navia-DIDComm is a complete, modern implementation of the [DIDComm v2 specificat
 
 - 🔒 **Complete DIDComm v2 Support** - Full specification implementation
 - 🚀 **Production Ready** - Comprehensive testing, security audits, modern dependencies
-- 🔐 **Modern Cryptography** - X25519, P-256, P-384 ✅, P-521, Ed25519, Secp256k1
+- 🛡️ **Post-Quantum Cryptography** - ML-KEM-768/1024 (NIST FIPS 203), ML-DSA-65/87 (NIST FIPS 204)
 - 📨 **Secure Messaging** - Encrypted (anoncrypt/authcrypt) and signed messages  
 - 🔄 **Message Routing** - Forward protocol and mediation support
 - 🔑 **DID Rotation** - Full `fromPrior` field support
 - ⚡ **High Performance** - Optimized for speed and low memory usage
 
-## 🔮 Future Roadmap
+## 🔮 Cryptographic Security
 
-- **Post-Quantum Cryptography** - Kyber integration planned for quantum-resistant key exchange
+- **✅ Post-Quantum Ready** - Complete implementation with NIST-standardized algorithms
+- **🔬 Quantum Resistant** - ML-KEM key encapsulation and ML-DSA digital signatures
+- **🏛️ NIST Compliant** - FIPS 203 (ML-KEM) and FIPS 204 (ML-DSA) certified algorithms
 
 ## 🚀 Quick Start
 
@@ -44,24 +46,23 @@ Use `cargo run --example {example-name}` for example `cargo run --example basic`
 - In order to use the library, `SecretsResolver` and `DIDResolver` traits must be implemented on the application level. 
   Implementation of that traits is out of DIDComm library scope, but we provide 2 simple implementation `ExampleDIDResolver`
   and `ExampleSecretsResolver` that allows resolve locally known DID docs and secrets for tests/demo purposes.
-  - Verification materials are expected in JWK, Base58 and Multibase (internally Base58 only) formats.
-    - In Base58 and Multibase formats, keys using only X25519 and Ed25519 curves are supported.
-    - For private keys in Base58 and Multibase formats, the verification material value contains both private and public parts (concatenated bytes).
-    - In Multibase format, bytes of the verification material value is prefixed with the corresponding Multicodec code.
+  - Post-quantum key materials are supported in multibase encoding format.
+    - ML-KEM key pairs support both public-key-only and full key pair representations.
+    - ML-DSA key pairs require combined private+public key format for proper security.
+    - All key material uses NIST-standardized PQC algorithms (ML-KEM-768/1024, ML-DSA-65/87).
   - Key IDs (kids) used in `SecretsResolver` must match the corresponding key IDs from DID Doc verification methods.
   - Key IDs (kids) in DID Doc verification methods and secrets must be a full [DID Fragment](https://www.w3.org/TR/did-core/#fragment), that is `did#key-id`.
   - Verification methods referencing another DID Document are not supported (see [Referring to Verification Methods](https://www.w3.org/TR/did-core/#referring-to-verification-methods)).
-- The following curves and algorithms are supported:
-  - Encryption:
-     - Curves: X25519, P-256, P-384
+- The following post-quantum algorithms are supported:
+  - Key Encapsulation (KEM):
+     - ML-KEM-768 (NIST FIPS 203) - 192-bit quantum security level
+     - ML-KEM-1024 (NIST FIPS 203) - 256-bit quantum security level
      - Content encryption algorithms: 
-       - XC20P (to be used with ECDH-ES only, default for anoncrypt),
-       - A256GCM (to be used with ECDH-ES only),
-       - A256CBC-HS512 (default for authcrypt)
-     - Key wrapping algorithms: ECDH-ES+A256KW, ECDH-1PU+A256KW
-  - Signing:
-    - Curves: Ed25519, Secp256k1, P-256, P-384
-    - Algorithms: EdDSA (with crv=Ed25519), ES256, ES384, ES256K
+       - XChaCha20-Poly1305 (default for anoncrypt)
+       - AES-256-GCM (default for authcrypt)
+  - Digital Signatures:
+    - ML-DSA-65 (NIST FIPS 204, Dilithium3) - 192-bit quantum security level
+    - ML-DSA-87 (NIST FIPS 204, Dilithium5) - 256-bit quantum security level
 - Forward protocol is implemented and used by default.
 - DID rotation (`fromPrior` field) is supported.
 - DIDComm has been implemented under the following [Assumptions](https://hackmd.io/i3gLqgHQR2ihVFV5euyhqg)   
@@ -252,6 +253,297 @@ let (msg, metadata) = Message::unpack(
 .await
 .expect("Unable unpack");
 ```
+
+## 📖 API Reference
+
+### Core Functions
+
+#### Message Packing
+
+**`pack_encrypted`** - Pack a message with encryption for specific recipients:
+
+```rust
+pub async fn pack_encrypted(
+    message: &Message,
+    sender_id: &str,
+    recipients_ids: &[String],
+    sign_by: Option<&str>,
+    did_resolver: &dyn DIDResolver,
+    secrets_resolver: &dyn SecretsResolver,
+    options: &PackEncryptedOptions,
+) -> Result<String>
+```
+
+**`pack_signed`** - Pack a message with signature only:
+
+```rust
+pub async fn pack_signed(
+    message: &Message,
+    sign_by: &str,
+    did_resolver: &dyn DIDResolver,
+    secrets_resolver: &dyn SecretsResolver,
+) -> Result<String>
+```
+
+**`pack_plaintext`** - Pack a message as plaintext:
+
+```rust
+pub fn pack_plaintext(message: &Message) -> Result<String>
+```
+
+#### Message Unpacking
+
+**`unpack`** - Unpack any type of DIDComm message:
+
+```rust
+pub async fn unpack(
+    packed_msg: &str,
+    did_resolver: &dyn DIDResolver,
+    secrets_resolver: &dyn SecretsResolver,
+    options: &UnpackOptions,
+) -> Result<(Message, MessageMetadata)>
+```
+
+### Message Types
+
+**`Message`** - Core DIDComm message structure:
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Message {
+    pub id: String,
+    pub type_: String,
+    pub body: Value,
+    pub from: Option<String>,
+    pub to: Option<Vec<String>>,
+    pub created_time: Option<u64>,
+    pub expires_time: Option<u64>,
+    pub from_prior: Option<String>,
+    pub attachments: Option<Vec<Attachment>>,
+    pub thid: Option<String>,
+    pub pthid: Option<String>,
+    pub extra_headers: HashMap<String, Value>,
+}
+```
+
+**`MessageBuilder`** - Builder pattern for creating messages:
+
+```rust
+impl MessageBuilder {
+    pub fn id(mut self, id: String) -> Self
+    pub fn type_(mut self, type_: String) -> Self  
+    pub fn body(mut self, body: Value) -> Self
+    pub fn from(mut self, from: String) -> Self
+    pub fn to(mut self, to: Vec<String>) -> Self
+    pub fn finalize(self) -> Message
+    // ... more builder methods
+}
+```
+
+### Error Handling
+
+**`ErrorKind`** - Categorized error types:
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorKind {
+    // DID-related errors
+    DIDNotResolved,
+    DIDUrlNotFound,
+    DIDDocumentInvalid,
+    
+    // Cryptographic errors
+    SecretNotFound,
+    InvalidKeyMaterial,
+    EncryptionFailed,
+    DecryptionFailed,
+    SignatureVerificationFailed,
+    
+    // Protocol errors
+    Malformed,
+    ProtocolViolation,
+    UnsupportedFormat,
+    
+    // System errors
+    InvalidState,
+    IllegalArgument,
+    IoError,
+    Timeout,
+}
+```
+
+## 🔗 Integration Guide
+
+### For navia (Rust + UniFFI Bindings)
+
+Add to your `rust/navia-core/Cargo.toml`:
+
+```toml
+[dependencies]
+navia-didcomm = { git = "https://github.com/nyx-chat/navia-didcomm", version = "1.0.0" }
+```
+
+**Basic Usage:**
+
+```rust
+use navia_didcomm::{Message, pack_encrypted, unpack, PackEncryptedOptions};
+use navia_didcomm::did::resolvers::ExampleDIDResolver;
+use navia_didcomm::secrets::resolvers::ExampleSecretsResolver;
+
+// Initialize resolvers with your DID documents and secrets
+let did_resolver = ExampleDIDResolver::new(did_docs);
+let secrets_resolver = ExampleSecretsResolver::new(secrets);
+
+// Pack an encrypted message
+let message = Message::build("alice_did", "bob_did", "hello".to_string())
+    .finalize();
+
+let packed_msg = pack_encrypted(
+    &message,
+    "alice_did", 
+    &["bob_did"],
+    None, // No sign_by for anoncrypt
+    &did_resolver,
+    &secrets_resolver,
+    &PackEncryptedOptions::default()
+).await?;
+
+// Unpack a received message  
+let (unpacked_msg, metadata) = unpack(
+    &received_msg,
+    &did_resolver,
+    &secrets_resolver,
+    &UnpackOptions::default()
+).await?;
+```
+
+**Integration with UniFFI:**
+
+```rust
+use navia_didcomm::{Message, pack_encrypted, unpack};
+
+#[uniffi::export]
+pub async fn pack_didcomm_message(
+    message: Message,
+    sender_did: String,
+    recipient_dids: Vec<String>
+) -> Result<String, Error> {
+    // Your wrapper implementation
+}
+
+#[uniffi::export] 
+pub async fn unpack_didcomm_message(
+    packed_message: String
+) -> Result<(Message, MessageMetadata), Error> {
+    // Your wrapper implementation
+}
+```
+
+### For Mediator Server (Pure Rust)
+
+```rust
+use navia_didcomm::{
+    Message, pack_encrypted, unpack, forward_message,
+    did::resolvers::ExampleDIDResolver,
+    secrets::resolvers::ExampleSecretsResolver,
+    protocols::routing::try_parse_forward
+};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let did_resolver = setup_did_resolver().await;
+    let secrets_resolver = setup_secrets_resolver().await;
+    
+    // Handle incoming messages
+    while let Ok(incoming_msg) = receive_message().await {
+        let (message, metadata) = unpack(
+            &incoming_msg,
+            &did_resolver, 
+            &secrets_resolver,
+            &Default::default()
+        ).await?;
+        
+        // Check if this is a forward message
+        if let Some(forward) = try_parse_forward(&message) {
+            route_message(forward.next, forward.forwarded_msg).await?;
+        } else {
+            process_direct_message(message, metadata).await?;
+        }
+    }
+    
+    Ok(())
+}
+```
+
+### Error Handling
+
+```rust
+use navia_didcomm::error::{Error, ErrorKind};
+
+match pack_encrypted(/* ... */).await {
+    Ok(packed_msg) => { /* Success */ },
+    Err(e) => {
+        match e.kind() {
+            ErrorKind::DIDNotResolved => { /* Handle DID resolution failure */ },
+            ErrorKind::SecretNotFound => { /* Handle missing cryptographic key */ },
+            ErrorKind::EncryptionFailed => { /* Handle encryption failure */ },
+            _ => eprintln!("DIDComm error: {}", e),
+        }
+    }
+}
+```
+
+### Performance & Caching
+
+Use the `CachingDIDResolver` for better performance:
+
+```rust
+use navia_didcomm::did::caching_resolver::CachingDIDResolver;
+
+let caching_resolver = CachingDIDResolver::new(&base_resolver);
+// DID documents are automatically cached after first resolution
+```
+
+## 🔧 Development
+
+### Features
+
+Enable specific features in your `Cargo.toml`:
+
+```toml
+[dependencies]
+navia-didcomm = { 
+    git = "https://github.com/nyx-chat/navia-didcomm", 
+    version = "1.0.0",
+    features = ["tracing"] # Optional: Enable logging/tracing support
+}
+```
+
+### Testing
+
+Run the full test suite:
+
+```bash
+cargo test --all-features
+```
+
+Specific test categories:
+```bash
+cargo test --lib                        # Unit tests
+cargo test --test integration_tests     # Integration tests
+cargo test --test error_diagnostics_tests # Error handling
+```
+
+### Security Notes
+
+- All key comparisons use constant-time operations to prevent timing attacks
+- Memory handling uses `SecretBytes` for cryptographic material
+- Thread-safe DID resolution caching with `RwLock`
+- Comprehensive input validation and sanitization
+
+## 📚 Documentation
+
+For detailed PQC implementation details, see [`docs/PQC_GUIDE.md`](docs/PQC_GUIDE.md).
 
 ## Contribution
 PRs are welcome!
