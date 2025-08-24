@@ -89,8 +89,8 @@ impl Message {
                 )
                 .await?;
 
-                if forwarded_msg_opt.is_some() {
-                    forwarded_msg = forwarded_msg_opt.unwrap();
+                if let Some(unwrapped_msg) = forwarded_msg_opt {
+                    forwarded_msg = unwrapped_msg;
                     msg = &forwarded_msg;
 
                     metadata.re_wrapped_in_forward = true;
