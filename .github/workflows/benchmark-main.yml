@@ -1,0 +1,64 @@
+name: Benchmark on Main
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+
+jobs:
+  benchmark:
+    name: Run Benchmarks
+    runs-on: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-bench-
+            ${{ runner.os }}-cargo-
+      
+      - name: Run benchmarks
+        run: |
+          echo "Running performance benchmarks on main branch..."
+          cargo bench --all-features | tee benchmark-results.txt
+      
+      - name: Parse benchmark results
+        run: |
+          echo "## Benchmark Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          grep -E "time:|found|test" benchmark-results.txt | head -50 >> $GITHUB_STEP_SUMMARY || true
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-main-${{ github.sha }}
+          path: |
+            benchmark-results.txt
+            target/criterion/
+          retention-days: 30
+      
+      - name: Comment on commit (if significant changes)
+        if: github.event_name == 'push'
+        run: |
+          echo "✅ Benchmarks completed for commit ${{ github.sha }}"
+          echo "Results available in workflow artifacts"
