@@ -1,3 +1,23 @@
+## [1.1.0](https://github.com/Nyx-Chat/navia-didcomm/compare/v1.0.3...v1.1.0) (2025-08-24)
+
+### ✨ Features
+
+* Add no_forward() constructor for PackEncryptedOptions ([173e39a](https://github.com/Nyx-Chat/navia-didcomm/commit/173e39aa789d935f252b5f1c518557ea02d1bca5))
+
+### 🐛 Bug Fixes
+
+* handle both single and double quotes in version extraction ([a1cb0af](https://github.com/Nyx-Chat/navia-didcomm/commit/a1cb0af5eb29ce1ac6952bec2978374f650486ea))
+* replace cargo set-version with sed to avoid semver downgrade error ([2c08e56](https://github.com/Nyx-Chat/navia-didcomm/commit/2c08e56bdd3f9abe54c7c7b88d197a0d3c8ae293))
+* Replace unnecessary unwrap with if-let pattern in unpack module ([1dd95aa](https://github.com/Nyx-Chat/navia-didcomm/commit/1dd95aa72d26692299c878a579ee4bfcbdec2b92))
+* simplify PR preview package workflow ([1ac3086](https://github.com/Nyx-Chat/navia-didcomm/commit/1ac30869adddd0f8d8385046efed310c0c466ded))
+* update sed to only modify first version line in Cargo.toml ([e2d544c](https://github.com/Nyx-Chat/navia-didcomm/commit/e2d544c82fd62d8fd61030912fb08e11ee5a4d23))
+* update workflows for private Rust package handling ([a8de03b](https://github.com/Nyx-Chat/navia-didcomm/commit/a8de03bad377194e952d49270779286a98698ce9))
+
+### 📝 Documentation
+
+* add GITHUB_TOKEN usage instructions for CI/CD ([ffde22d](https://github.com/Nyx-Chat/navia-didcomm/commit/ffde22da486465291118f7a1ec4c40eed1f61d87))
+* add instructions for using preview packages with private repositories ([f53a40f](https://github.com/Nyx-Chat/navia-didcomm/commit/f53a40fb36f452d9b4caa1c544928be41f31a6fc))
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
