@@ -60,7 +60,7 @@ jobs:
       - name: Get latest version
         id: get_version
         run: |
-          VERSION=$(grep -E '^version = ' Cargo.toml | head -1 | cut -d'"' -f2)
+          VERSION=$(grep -E '^version = ' Cargo.toml | head -1 | sed -E "s/^version = ['\"](.+)['\"]$/\1/")
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "Released version: $VERSION"
       
@@ -73,7 +73,7 @@ jobs:
           client-payload: '{"version": "${{ steps.get_version.outputs.VERSION }}"}'
 
   publish-on-release:
-    name: Publish to GitHub Packages
+    name: Build and Upload Release Package
     runs-on: ubuntu-latest
     if: github.event_name == 'repository_dispatch' && github.event.action == 'publish-package'
     
@@ -97,20 +97,6 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       
-      - name: Configure cargo for GitHub Package Registry
-        run: |
-          mkdir -p ~/.cargo
-          cat >> ~/.cargo/config.toml << EOF
-          [registries.github]
-          index = "https://github.com/rust-lang/_placeholder"
-          token = "${{ secrets.GITHUB_TOKEN }}"
-          
-          [registry]
-          default = "github"
-          EOF
-          
-          git config --global url."https://${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
-      
       - name: Build and test
         run: |
           cargo build --release --all-features
@@ -119,18 +105,23 @@ jobs:
       - name: Package the crate
         run: cargo package --allow-dirty
       
-      - name: Publish to GitHub Package Registry
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Get package info
+        id: package_info
         run: |
-          PACKAGE_NAME=$(grep -E '^name = ' Cargo.toml | head -1 | cut -d'"' -f2)
+          PACKAGE_NAME=$(grep -E '^name = ' Cargo.toml | head -1 | sed -E "s/^name = ['\"](.+)['\"]$/\1/")
           VERSION="${{ github.event.client_payload.version }}"
-          
-          echo "Publishing $PACKAGE_NAME v$VERSION to GitHub Package Registry"
-          
-          cargo publish --registry github --token ${{ secrets.GITHUB_TOKEN }} || {
-            echo "Package may already be published or registry not yet configured"
-          }
+          echo "PACKAGE_NAME=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "CRATE_FILE=${PACKAGE_NAME}-${VERSION}.crate" >> $GITHUB_OUTPUT
+      
+      - name: Upload crate to release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.package_info.outputs.VERSION }}
+          files: target/package/${{ steps.package_info.outputs.CRATE_FILE }}
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Create cargo package artifact
         uses: actions/upload-artifact@v4
