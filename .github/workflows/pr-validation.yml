@@ -17,7 +17,7 @@ jobs:
     name: Commit Message Validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       
@@ -43,7 +43,7 @@ jobs:
     name: Quick Checks
     runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-x64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -76,7 +76,7 @@ jobs:
     runs-on: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64
     needs: quick-checks
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -113,7 +113,7 @@ jobs:
     runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-x64
     needs: quick-checks
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -141,7 +141,7 @@ jobs:
     runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-x64
     needs: quick-checks
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
