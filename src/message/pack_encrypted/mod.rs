@@ -244,6 +244,19 @@ impl Default for PackEncryptedOptions {
     }
 }
 
+impl PackEncryptedOptions {
+    pub fn no_forward() -> Self {
+        PackEncryptedOptions {
+            protect_sender: false,
+            forward: false,
+            forward_headers: None,
+            messaging_service: None,
+            enc_alg_auth: AuthCryptAlg::default(),
+            enc_alg_anon: AnonCryptAlg::default(),
+        }
+    }
+}
+
 /// Additional metadata about this `encrypt` method execution like used keys identifiers,
 /// used messaging service.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
@@ -297,7 +310,7 @@ mod tests {
     use serde_json::{json, Value};
 
     use crate::{
-        algorithms::AnonCryptAlg,
+        algorithms::{AnonCryptAlg, AuthCryptAlg},
         did::{resolvers::ExampleDIDResolver, VerificationMaterial, VerificationMethod},
         error::ErrorKind,
         jwe,
@@ -3004,5 +3017,26 @@ mod tests {
         let msg: Value = serde_json::from_str(msg).expect("Unable from_str");
         let exp_msg: Value = serde_json::from_str(exp_msg).expect("Unable from_str");
         assert_eq!(msg, exp_msg)
+    }
+
+    #[test]
+    fn test_pack_encrypted_options_no_forward() {
+        let options = PackEncryptedOptions::no_forward();
+
+        assert_eq!(options.protect_sender, false);
+        assert_eq!(options.forward, false);
+        assert_eq!(options.forward_headers, None);
+        assert_eq!(options.messaging_service, None);
+        assert_eq!(options.enc_alg_auth, AuthCryptAlg::default());
+        assert_eq!(options.enc_alg_anon, AnonCryptAlg::default());
+
+        // Compare with default options to ensure only forward is different
+        let default_options = PackEncryptedOptions::default();
+        assert_eq!(options.protect_sender, default_options.protect_sender);
+        assert_ne!(options.forward, default_options.forward);
+        assert_eq!(options.forward_headers, default_options.forward_headers);
+        assert_eq!(options.messaging_service, default_options.messaging_service);
+        assert_eq!(options.enc_alg_auth, default_options.enc_alg_auth);
+        assert_eq!(options.enc_alg_anon, default_options.enc_alg_anon);
     }
 }
