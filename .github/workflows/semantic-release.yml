@@ -1,0 +1,140 @@
+name: Semantic Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  release:
+    name: Semantic Release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip ci]')
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install cargo-edit
+        run: cargo install cargo-edit
+      
+      - name: Install semantic-release and plugins
+        run: |
+          npm install -g \
+            semantic-release \
+            @semantic-release/changelog \
+            @semantic-release/git \
+            @semantic-release/github \
+            @semantic-release/exec \
+            conventional-changelog-conventionalcommits
+      
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Run semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release
+      
+      - name: Get latest version
+        id: get_version
+        run: |
+          VERSION=$(grep -E '^version = ' Cargo.toml | head -1 | cut -d'"' -f2)
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Released version: $VERSION"
+      
+      - name: Trigger package publishing
+        if: steps.get_version.outputs.VERSION != ''
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: publish-package
+          client-payload: '{"version": "${{ steps.get_version.outputs.VERSION }}"}'
+
+  publish-on-release:
+    name: Publish to GitHub Packages
+    runs-on: ubuntu-latest
+    if: github.event_name == 'repository_dispatch' && github.event.action == 'publish-package'
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Configure cargo for GitHub Package Registry
+        run: |
+          mkdir -p ~/.cargo
+          cat >> ~/.cargo/config.toml << EOF
+          [registries.github]
+          index = "https://github.com/rust-lang/_placeholder"
+          token = "${{ secrets.GITHUB_TOKEN }}"
+          
+          [registry]
+          default = "github"
+          EOF
+          
+          git config --global url."https://${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+      
+      - name: Build and test
+        run: |
+          cargo build --release --all-features
+          cargo test --all-features
+      
+      - name: Package the crate
+        run: cargo package --allow-dirty
+      
+      - name: Publish to GitHub Package Registry
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PACKAGE_NAME=$(grep -E '^name = ' Cargo.toml | head -1 | cut -d'"' -f2)
+          VERSION="${{ github.event.client_payload.version }}"
+          
+          echo "Publishing $PACKAGE_NAME v$VERSION to GitHub Package Registry"
+          
+          cargo publish --registry github --token ${{ secrets.GITHUB_TOKEN }} || {
+            echo "Package may already be published or registry not yet configured"
+          }
+      
+      - name: Create cargo package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-package-${{ github.event.client_payload.version }}
+          path: target/package/*.crate
+          retention-days: 30

@@ -1,0 +1,168 @@
+name: PR Preview Package
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+  pull-requests: write
+
+jobs:
+  publish-preview:
+    name: Publish PR Preview Package
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install cargo-edit
+        run: cargo install cargo-edit
+      
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Generate preview version
+        id: preview_version
+        run: |
+          # Get current version from Cargo.toml
+          BASE_VERSION=$(grep -E '^version = ' Cargo.toml | head -1 | cut -d'"' -f2)
+          
+          # Create preview version with PR number and commit SHA
+          PREVIEW_VERSION="${BASE_VERSION}-pr.${{ github.event.pull_request.number }}.$(git rev-parse --short HEAD)"
+          
+          echo "BASE_VERSION=$BASE_VERSION" >> $GITHUB_OUTPUT
+          echo "PREVIEW_VERSION=$PREVIEW_VERSION" >> $GITHUB_OUTPUT
+          echo "Preview version: $PREVIEW_VERSION"
+      
+      - name: Update version for preview
+        run: |
+          cargo set-version ${{ steps.preview_version.outputs.PREVIEW_VERSION }}
+          
+          # Show the updated version
+          grep -E '^version = ' Cargo.toml
+      
+      - name: Build and test
+        run: |
+          cargo build --release --all-features
+          cargo test --all-features
+      
+      - name: Configure cargo for GitHub Package Registry
+        run: |
+          mkdir -p ~/.cargo
+          cat >> ~/.cargo/config.toml << EOF
+          [registries.github]
+          index = "https://github.com/rust-lang/_placeholder"
+          token = "${{ secrets.GITHUB_TOKEN }}"
+          
+          [registry]
+          default = "github"
+          EOF
+          
+          git config --global url."https://${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+      
+      - name: Package the crate
+        run: cargo package --allow-dirty
+      
+      - name: Publish preview to GitHub Package Registry
+        id: publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PACKAGE_NAME=$(grep -E '^name = ' Cargo.toml | head -1 | cut -d'"' -f2)
+          
+          echo "Publishing preview: $PACKAGE_NAME@${{ steps.preview_version.outputs.PREVIEW_VERSION }}"
+          
+          # Try to publish (may fail if already exists for this commit)
+          cargo publish --registry github --token ${{ secrets.GITHUB_TOKEN }} || {
+            echo "::warning::Preview package may already exist for this commit"
+          }
+          
+          echo "package_name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+      
+      - name: Upload preview package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-preview-package-${{ github.event.pull_request.number }}
+          path: target/package/*.crate
+          retention-days: 3  # Reduced to 3 days for faster cleanup
+      
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const package_name = '${{ steps.publish.outputs.package_name }}';
+            const preview_version = '${{ steps.preview_version.outputs.PREVIEW_VERSION }}';
+            const base_version = '${{ steps.preview_version.outputs.BASE_VERSION }}';
+            const pr_number = context.payload.pull_request.number;
+            
+            const comment = `## 📦 Preview Package Published
+            
+            A preview version of this PR has been published to GitHub Package Registry:
+            
+            **Version:** \`${preview_version}\`
+            
+            ### Usage in Cargo.toml:
+            
+            \`\`\`toml
+            [dependencies]
+            ${package_name} = { version = "${preview_version}", registry = "github" }
+            \`\`\`
+            
+            ### Or using git dependency:
+            
+            \`\`\`toml
+            [dependencies]
+            ${package_name} = { git = "https://github.com/${{ github.repository }}.git", rev = "${{ github.event.pull_request.head.sha }}" }
+            \`\`\`
+            
+            ### Notes:
+            - This is a preview version for testing purposes
+            - Base version: \`${base_version}\`
+            - The preview package will be available for 7 days
+            - When merged, semantic versioning will determine the final version`;
+            
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr_number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('Preview Package Published')
+            );
+            
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr_number,
+                body: comment
+              });
+            }

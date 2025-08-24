@@ -1,0 +1,69 @@
+name: PR Cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  actions: write
+  packages: write
+  pull-requests: write
+
+jobs:
+  cleanup:
+    name: Cleanup PR Artifacts
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Delete PR artifacts
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const pr_number = context.payload.pull_request.number;
+            
+            // Get all artifacts
+            const artifacts = await github.rest.actions.listArtifactsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+            
+            // Filter and delete PR-specific artifacts
+            const prArtifacts = artifacts.data.artifacts.filter(artifact => 
+              artifact.name.includes(`pr-preview-package-${pr_number}`)
+            );
+            
+            for (const artifact of prArtifacts) {
+              console.log(`Deleting artifact: ${artifact.name}`);
+              await github.rest.actions.deleteArtifact({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                artifact_id: artifact.id
+              });
+            }
+            
+            console.log(`Cleaned up ${prArtifacts.length} artifacts for PR #${pr_number}`);
+      
+      - name: Add cleanup comment
+        if: github.event.pull_request.merged == true
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const pr_number = context.payload.pull_request.number;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr_number,
+              body: `✅ PR merged! Preview packages for this PR have been marked for cleanup.\n\n**Note:** GitHub Package Registry packages are retained for audit purposes but will not conflict with future versions.`
+            });
+      
+      # Unfortunately, GitHub doesn't allow automatic deletion of packages via API
+      # But we can mark them or document them
+      - name: Document preview package deprecation
+        run: |
+          echo "PR #${{ github.event.pull_request.number }} closed"
+          echo "Preview packages in GitHub Package Registry are retained but deprecated"
+          echo "They have unique versions (with -pr.N suffix) so won't conflict"

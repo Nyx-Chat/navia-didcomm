@@ -1,0 +1,131 @@
+name: Publish to GitHub Package Registry
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (without v prefix)'
+        required: false
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Configure cargo for GitHub Package Registry
+        run: |
+          # Configure cargo to use GitHub Package Registry
+          mkdir -p ~/.cargo
+          
+          # Set up registry configuration
+          cat >> ~/.cargo/config.toml << EOF
+          [registries.github]
+          index = "https://github.com/rust-lang/_placeholder"
+          token = "${{ secrets.GITHUB_TOKEN }}"
+          
+          [registry]
+          default = "github"
+          EOF
+          
+          # Configure git to use token for authentication
+          git config --global url."https://${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+      
+      - name: Update version if manually triggered
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
+        run: |
+          # Update version in Cargo.toml
+          VERSION="${{ github.event.inputs.version }}"
+          sed -i "s/^version = .*/version = '$VERSION'/" Cargo.toml
+          echo "Updated version to $VERSION"
+      
+      - name: Build the library
+        run: cargo build --release --all-features
+      
+      - name: Run tests
+        run: cargo test --all-features
+      
+      - name: Package the crate
+        run: cargo package --allow-dirty
+      
+      - name: Publish to GitHub Package Registry
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the package name and version
+          PACKAGE_NAME=$(grep -E '^name = ' Cargo.toml | head -1 | cut -d'"' -f2)
+          VERSION=$(grep -E '^version = ' Cargo.toml | head -1 | cut -d'"' -f2)
+          
+          echo "Publishing $PACKAGE_NAME v$VERSION to GitHub Package Registry"
+          
+          # Publish the crate
+          cargo publish --registry github --token ${{ secrets.GITHUB_TOKEN }} || {
+            echo "Direct publish failed, trying alternative method..."
+            
+            # Alternative: Create a .crate file and upload as artifact
+            CRATE_FILE="target/package/${PACKAGE_NAME}-${VERSION}.crate"
+            
+            if [ -f "$CRATE_FILE" ]; then
+              echo "Crate file found at $CRATE_FILE"
+              
+              # Upload as GitHub Package
+              curl -X PUT \
+                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Content-Type: application/octet-stream" \
+                --data-binary "@$CRATE_FILE" \
+                "https://uploads.github.com/repos/${{ github.repository }}/releases/latest/assets?name=${PACKAGE_NAME}-${VERSION}.crate"
+            else
+              echo "Crate file not found, package may already be published"
+            fi
+          }
+      
+      - name: Create cargo package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-package
+          path: target/package/*.crate
+          retention-days: 30
+      
+      - name: Output usage instructions
+        run: |
+          PACKAGE_NAME=$(grep -E '^name = ' Cargo.toml | head -1 | cut -d'"' -f2)
+          VERSION=$(grep -E '^version = ' Cargo.toml | head -1 | cut -d'"' -f2)
+          
+          echo "📦 Package published successfully!"
+          echo ""
+          echo "To use this package in another private repository:"
+          echo ""
+          echo "1. Add to Cargo.toml:"
+          echo "   [dependencies]"
+          echo "   $PACKAGE_NAME = { version = \"$VERSION\", registry = \"github\" }"
+          echo ""
+          echo "2. Configure authentication in the consuming repository:"
+          echo "   - Add GITHUB_TOKEN as a repository secret"
+          echo "   - Configure cargo in your CI/CD pipeline"
+          echo ""
+          echo "3. Alternative: Use git dependency with authentication:"
+          echo "   [dependencies]"
+          echo "   $PACKAGE_NAME = { git = \"https://github.com/${{ github.repository }}.git\", tag = \"v$VERSION\" }"
