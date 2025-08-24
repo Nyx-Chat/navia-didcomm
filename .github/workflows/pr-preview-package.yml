@@ -121,23 +121,39 @@ jobs:
             **Version:** \`${preview_version}\`
             **Base version:** \`${base_version}\`
             
-            ### Usage via git dependency:
+            ### Usage via git dependency (Private Repository):
             
+            **Option 1: Using SSH (recommended):**
+            \`\`\`toml
+            [dependencies]
+            ${package_name} = { git = "ssh://git@github.com/${{ github.repository }}.git", rev = "${{ github.event.pull_request.head.sha }}" }
+            \`\`\`
+            
+            **Option 2: Using HTTPS with token:**
             \`\`\`toml
             [dependencies]
             ${package_name} = { git = "https://github.com/${{ github.repository }}.git", rev = "${{ github.event.pull_request.head.sha }}" }
             \`\`\`
-            
-            Or using the PR branch:
-            
-            \`\`\`toml
-            [dependencies]
-            ${package_name} = { git = "https://github.com/${{ github.repository }}.git", branch = "${{ github.event.pull_request.head.ref }}" }
+            Then configure git to use your token:
+            \`\`\`bash
+            git config --global url."https://<YOUR_GITHUB_TOKEN>@github.com/".insteadOf "https://github.com/"
             \`\`\`
             
-            ### Download .crate file:
+            **Option 3: Using the PR branch:**
+            \`\`\`toml
+            [dependencies]
+            ${package_name} = { git = "ssh://git@github.com/${{ github.repository }}.git", branch = "${{ github.event.pull_request.head.ref }}" }
+            \`\`\`
             
-            The packaged \`.crate\` file is available as a [workflow artifact](https://github.com/${{ github.repository }}/actions/runs/${context.runId}) for 3 days.
+            ### Download and use .crate file locally:
+            
+            1. Download the \`.crate\` file from [workflow artifacts](https://github.com/${{ github.repository }}/actions/runs/${context.runId})
+            2. Extract it: \`tar -xvf ${package_name}-${preview_version}.crate\`
+            3. Reference it locally in Cargo.toml:
+            \`\`\`toml
+            [dependencies]
+            ${package_name} = { path = "/path/to/extracted/package" }
+            \`\`\`
             
             ### Notes:
             - This is a preview build for testing purposes
