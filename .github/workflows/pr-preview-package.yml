@@ -130,13 +130,22 @@ jobs:
             \`\`\`
             
             **Option 2: Using HTTPS with token:**
+            
+            For CI/CD (using GITHUB_TOKEN):
             \`\`\`toml
             [dependencies]
             ${package_name} = { git = "https://github.com/${{ github.repository }}.git", rev = "${{ github.event.pull_request.head.sha }}" }
             \`\`\`
-            Then configure git to use your token:
+            In your GitHub Actions workflow:
+            \`\`\`yaml
+            - name: Configure git for private repos
+              run: |
+                git config --global url."https://x-access-token:\${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+            \`\`\`
+            
+            For local development (using Personal Access Token):
             \`\`\`bash
-            git config --global url."https://<YOUR_GITHUB_TOKEN>@github.com/".insteadOf "https://github.com/"
+            git config --global url."https://<YOUR_PAT>@github.com/".insteadOf "https://github.com/"
             \`\`\`
             
             **Option 3: Using the PR branch:**
