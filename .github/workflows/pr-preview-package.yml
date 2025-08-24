@@ -22,9 +22,6 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
       
-      - name: Install cargo-edit
-        run: cargo install cargo-edit
-      
       - name: Cache cargo dependencies
         uses: actions/cache@v4
         with:
@@ -51,7 +48,9 @@ jobs:
       
       - name: Update version for preview
         run: |
-          cargo set-version ${{ steps.preview_version.outputs.PREVIEW_VERSION }}
+          # Directly update the version in Cargo.toml using sed
+          # This avoids cargo set-version's semver validation which treats pre-release as downgrade
+          sed -i "s/^version = .*/version = \"${{ steps.preview_version.outputs.PREVIEW_VERSION }}\"/" Cargo.toml
           
           # Show the updated version
           grep -E '^version = ' Cargo.toml
