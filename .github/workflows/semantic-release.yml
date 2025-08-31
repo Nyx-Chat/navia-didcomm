@@ -115,7 +115,7 @@ jobs:
           echo "CRATE_FILE=${PACKAGE_NAME}-${VERSION}.crate" >> $GITHUB_OUTPUT
       
       - name: Upload crate to release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.package_info.outputs.VERSION }}
           files: target/package/${{ steps.package_info.outputs.CRATE_FILE }}
