@@ -67,7 +67,7 @@ version = '0.3.6'
 features = ['std', 'k256', 'p384']
 
 [dependencies.uuid]
-version = "1.11"
+version = "1.18"
 features = ["v4"]
 
 [dev-dependencies]
