@@ -1,3 +1,9 @@
+## [1.1.1](https://github.com/Nyx-Chat/navia-didcomm/compare/v1.1.0...v1.1.1) (2025-09-15)
+
+### 🐛 Bug Fixes
+
+* update tracing-subscriber to fix RUSTSEC-2025-0055 vulnerability ([d0abaa9](https://github.com/Nyx-Chat/navia-didcomm/commit/d0abaa9678bc6957654917d164dccbf0eb1e424e))
+
 ## [1.1.0](https://github.com/Nyx-Chat/navia-didcomm/compare/v1.0.3...v1.1.0) (2025-08-24)
 
 ### ✨ Features
