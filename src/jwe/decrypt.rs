@@ -299,7 +299,6 @@ mod tests {
         );
 
         /// TODO: P-521 support (P-384 support is now complete)
-
         fn _decrypt_works<CE, KDF, KE, KW>(
             sender: Option<(&str, &str)>,
             recipient: (&str, &str),

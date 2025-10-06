@@ -348,7 +348,6 @@ mod tests {
             EncAlgorithm::A256Gcm,
         );
         /// TODO: P-521 support (P-384 support is now complete)
-
         fn _encrypt_works<CE, KDF, KE, KW>(
             alice: Option<(&str, &str, &str)>,
             bob: &[(&str, &str, &str)],
