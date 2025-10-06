@@ -375,17 +375,11 @@ mod tests {
 
         assert!(extra_headers.contains_key("example-header-1"));
 
-        assert_eq!(
-            extra_headers["example-header-1"],
-            "example-header-1-value"
-        );
+        assert_eq!(extra_headers["example-header-1"], "example-header-1-value");
 
         assert!(extra_headers.contains_key("example-header-2"));
 
-        assert_eq!(
-            extra_headers["example-header-2"],
-            "example-header-2-value"
-        );
+        assert_eq!(extra_headers["example-header-2"], "example-header-2-value");
 
         let attachments = message.attachments.expect("attachments is some.");
         assert_eq!(attachments.len(), 3);

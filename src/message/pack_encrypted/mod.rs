@@ -133,7 +133,9 @@ impl Message {
 
         let (msg, messaging_service, mut message_ids) =
             match wrap_in_forward_if_needed(&msg, to, &caching_resolver, options).await? {
-                Some((forward_msg, messaging_service, fwd_ids)) => (forward_msg, Some(messaging_service), fwd_ids),
+                Some((forward_msg, messaging_service, fwd_ids)) => {
+                    (forward_msg, Some(messaging_service), fwd_ids)
+                }
                 None => (msg, None, Vec::new()),
             };
 

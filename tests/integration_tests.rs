@@ -8,8 +8,8 @@
 
 use navia_didcomm::{
     did::{
-        resolvers::ExampleDIDResolver, DIDDoc,
-        VerificationMaterial, VerificationMethod, VerificationMethodType,
+        resolvers::ExampleDIDResolver, DIDDoc, VerificationMaterial, VerificationMethod,
+        VerificationMethodType,
     },
     secrets::{resolvers::ExampleSecretsResolver, Secret, SecretMaterial, SecretType},
     Message, PackEncryptedOptions, UnpackOptions,

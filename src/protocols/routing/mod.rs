@@ -162,7 +162,8 @@ fn build_forward_message(
 
     let msg = msg_builder.finalize();
 
-    let msg_str = serde_json::to_string(&msg).kind(ErrorKind::InvalidState, "Unable serialize forward message")?;
+    let msg_str = serde_json::to_string(&msg)
+        .kind(ErrorKind::InvalidState, "Unable serialize forward message")?;
     Ok((msg_str, message_id))
 }
 
