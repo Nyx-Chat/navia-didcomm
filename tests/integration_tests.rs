@@ -8,14 +8,13 @@
 
 use navia_didcomm::{
     did::{
-        resolvers::ExampleDIDResolver, DIDCommMessagingService, DIDDoc, Service, ServiceKind,
+        resolvers::ExampleDIDResolver, DIDDoc,
         VerificationMaterial, VerificationMethod, VerificationMethodType,
     },
     secrets::{resolvers::ExampleSecretsResolver, Secret, SecretMaterial, SecretType},
     Message, PackEncryptedOptions, UnpackOptions,
 };
-use serde_json::{json, Value};
-use std::collections::HashMap;
+use serde_json::json;
 
 // Create test DIDs and secrets manually to avoid import issues
 fn create_alice_did_and_secrets() -> (DIDDoc, Vec<Secret>) {
@@ -271,7 +270,7 @@ async fn test_end_to_end_alice_to_bob_encrypted() {
     assert!(unpack_metadata.encrypted);
     assert!(unpack_metadata.authenticated); // authcrypt when sender is provided
     assert!(!unpack_metadata.non_repudiation); // no signing key provided
-    assert_eq!(unpack_metadata.anonymous_sender, false);
+    assert!(!unpack_metadata.anonymous_sender);
 }
 
 /// Test Alice → Bob signed and encrypted message flow
@@ -1156,7 +1155,7 @@ async fn test_sequential_message_processing() {
                 &PackEncryptedOptions::default(),
             )
             .await
-            .expect(&format!("Should pack message {}", i));
+            .unwrap_or_else(|_| panic!("Should pack message {}", i));
 
         // Bob unpacks the message
         let (unpacked_msg, _) = Message::unpack(
@@ -1166,7 +1165,7 @@ async fn test_sequential_message_processing() {
             &UnpackOptions::default(),
         )
         .await
-        .expect(&format!("Should unpack message {}", i));
+        .unwrap_or_else(|_| panic!("Should unpack message {}", i));
 
         // Verify message content
         assert_eq!(unpacked_msg.id, format!("sequential-test-{}", i));
@@ -1226,7 +1225,7 @@ async fn test_message_size_and_performance_limits() {
                 &PackEncryptedOptions::default(),
             )
             .await
-            .expect(&format!("Should pack {} message successfully", size_name));
+            .unwrap_or_else(|_| panic!("Should pack {} message successfully", size_name));
 
         let pack_duration = start_time.elapsed();
 
@@ -1239,7 +1238,7 @@ async fn test_message_size_and_performance_limits() {
             &UnpackOptions::default(),
         )
         .await
-        .expect(&format!("Should unpack {} message successfully", size_name));
+        .unwrap_or_else(|_| panic!("Should unpack {} message successfully", size_name));
 
         let unpack_duration = unpack_start.elapsed();
         let total_duration = start_time.elapsed();

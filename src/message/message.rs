@@ -373,17 +373,17 @@ mod tests {
         let extra_headers = message.extra_headers;
         assert_eq!(extra_headers.len(), 2);
 
-        assert!(extra_headers.contains_key(&"example-header-1".to_owned()));
+        assert!(extra_headers.contains_key("example-header-1"));
 
         assert_eq!(
-            extra_headers[&"example-header-1".to_owned()],
+            extra_headers["example-header-1"],
             "example-header-1-value"
         );
 
-        assert!(extra_headers.contains_key(&"example-header-2".to_owned()));
+        assert!(extra_headers.contains_key("example-header-2"));
 
         assert_eq!(
-            extra_headers[&"example-header-2".to_owned()],
+            extra_headers["example-header-2"],
             "example-header-2-value"
         );
 

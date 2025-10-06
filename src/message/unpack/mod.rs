@@ -71,6 +71,7 @@ impl Message {
             sign_alg: None,
             signed_message: None,
             from_prior: None,
+            message_ids: Vec::new(),
         };
 
         let mut msg: &str = msg;
@@ -89,7 +90,8 @@ impl Message {
                 )
                 .await?;
 
-                if let Some(unwrapped_msg) = forwarded_msg_opt {
+                if let Some((unwrapped_msg, forward_msg_id)) = forwarded_msg_opt {
+                    metadata.message_ids.push(forward_msg_id);
                     forwarded_msg = unwrapped_msg;
                     msg = &forwarded_msg;
 
@@ -121,6 +123,9 @@ impl Message {
                 )
             })?;
 
+        // Add the final message ID to the list
+        metadata.message_ids.push(msg.id.clone());
+
         Ok((msg, metadata))
     }
 
@@ -128,7 +133,7 @@ impl Message {
         msg: &str,
         did_resolver: &'dr (dyn DIDResolver + 'dr),
         secrets_resolver: &'sr (dyn SecretsResolver + 'sr),
-    ) -> Result<Option<String>> {
+    ) -> Result<Option<(String, String)>> {
         let plaintext = match Message::from_str(msg) {
             Ok(m) => m,
             Err(e) if e.kind() == ErrorKind::Malformed => return Ok(None),
@@ -145,7 +150,7 @@ impl Message {
                     "Unable serialize forwarded message",
                 )?;
 
-                return Ok(Some(forwarded_msg));
+                return Ok(Some((forwarded_msg, plaintext.id.clone())));
             }
         }
 
@@ -222,6 +227,10 @@ pub struct UnpackMetadata {
 
     /// If plaintext contains from_prior header, its unpacked value is returned
     pub from_prior: Option<FromPrior>,
+
+    /// List of message IDs in the order they were unpacked (outer layer to inner layer).
+    /// First elements are Forward message IDs (if any), last element is the final message ID.
+    pub message_ids: Vec<String>,
 }
 
 async fn has_key_agreement_secret<'dr, 'sr>(
@@ -310,6 +319,7 @@ mod test {
             from_prior_issuer_kid: None,
             from_prior: None,
             re_wrapped_in_forward: false,
+            message_ids: vec![MESSAGE_SIMPLE.id.clone()],
         };
 
         _verify_unpack(PLAINTEXT_MSG_SIMPLE, &MESSAGE_SIMPLE, &plaintext_metadata).await;
@@ -394,6 +404,7 @@ mod test {
                     from_prior_issuer_kid: None,
                     from_prior: None,
                     re_wrapped_in_forward: false,
+                    message_ids: vec![msg.id.clone()],
                 },
             )
             .await;
@@ -417,6 +428,7 @@ mod test {
             from_prior_issuer_kid: None,
             from_prior: None,
             re_wrapped_in_forward: false,
+            message_ids: vec![MESSAGE_SIMPLE.id.clone()],
         };
 
         _verify_unpack(
@@ -522,6 +534,7 @@ mod test {
                     from_prior_issuer_kid: None,
                     from_prior: None,
                     re_wrapped_in_forward: false,
+                    message_ids: vec![MESSAGE_SIMPLE.id.clone()],
                 },
             )
             .await;
@@ -545,6 +558,7 @@ mod test {
             from_prior_issuer_kid: None,
             from_prior: None,
             re_wrapped_in_forward: false,
+            message_ids: vec![MESSAGE_SIMPLE.id.clone()],
         };
 
         _verify_unpack(
@@ -680,11 +694,11 @@ mod test {
             let forwarded_msg = serde_json::to_string(&forward.forwarded_msg)
                 .expect("Unable serialize forwarded message");
 
-            let re_wrapping_forward_msg = wrap_in_forward(
+            let (re_wrapping_forward_msg, _fwd_ids) = wrap_in_forward(
                 &forwarded_msg,
                 None,
                 to,
-                &vec![to.to_owned()],
+                &[to.to_owned()],
                 &AnonCryptAlg::default(),
                 &did_resolver,
             )
@@ -809,11 +823,11 @@ mod test {
                 serde_json::to_string(&forward_at_mediator1.forwarded_msg)
                     .expect("Unable serialize forwarded message");
 
-            let re_wrapping_forward_msg = wrap_in_forward(
+            let (re_wrapping_forward_msg, _fwd_ids) = wrap_in_forward(
                 &forwarded_msg_at_mediator1,
                 None,
                 to,
-                &vec![to.to_owned()],
+                &[to.to_owned()],
                 &AnonCryptAlg::default(),
                 &did_resolver,
             )
@@ -1039,6 +1053,7 @@ mod test {
                     from_prior_issuer_kid: None,
                     from_prior: None,
                     re_wrapped_in_forward: false,
+                    message_ids: vec![msg.id.clone()],
                 },
             )
             .await;
@@ -1173,6 +1188,7 @@ mod test {
                     from_prior_issuer_kid: None,
                     from_prior: None,
                     re_wrapped_in_forward: false,
+                    message_ids: vec![msg.id.clone()],
                 },
             )
             .await;
@@ -1196,6 +1212,7 @@ mod test {
             from_prior_issuer_kid: None,
             from_prior: None,
             re_wrapped_in_forward: false,
+            message_ids: vec![MESSAGE_SIMPLE.id.clone()],
         };
 
         _verify_unpack(
@@ -1363,6 +1380,7 @@ mod test {
                     from_prior_issuer_kid: None,
                     from_prior: None,
                     re_wrapped_in_forward: false,
+                    message_ids: vec![msg.id.clone()],
                 },
             )
             .await;
@@ -1540,6 +1558,7 @@ mod test {
                     from_prior_issuer_kid: None,
                     from_prior: None,
                     re_wrapped_in_forward: false,
+                    message_ids: vec![msg.id.clone()],
                 },
             )
             .await;
@@ -1652,6 +1671,7 @@ mod test {
                     from_prior_issuer_kid: None,
                     from_prior: None,
                     re_wrapped_in_forward: false,
+                    message_ids: vec![msg.id.clone()],
                 },
             )
             .await;
@@ -1768,6 +1788,7 @@ mod test {
                     from_prior_issuer_kid: None,
                     from_prior: None,
                     re_wrapped_in_forward: false,
+                    message_ids: vec![msg.id.clone()],
                 },
             )
             .await;
@@ -2079,6 +2100,7 @@ mod test {
             from_prior_issuer_kid: Some(CHARLIE_AUTH_METHOD_25519.id.clone()),
             from_prior: Some(FROM_PRIOR_FULL.clone()),
             re_wrapped_in_forward: false,
+            message_ids: vec![MESSAGE_FROM_PRIOR_FULL.id.clone()],
         };
 
         _verify_unpack(

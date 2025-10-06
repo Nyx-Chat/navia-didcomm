@@ -356,11 +356,11 @@ async fn re_wrapping_for_final_recipient() {
 
     println!("Mediator1 retrieved forwarded message \n{}\n", msg);
 
-    let msg = wrap_in_forward(
+    let (msg, _fwd_ids) = wrap_in_forward(
         &msg,
         None,
         &parsed_forward.next,
-        &vec![parsed_forward.next.clone()],
+        std::slice::from_ref(&parsed_forward.next),
         &AnonCryptAlg::default(),
         &did_resolver,
     )
@@ -465,11 +465,11 @@ async fn re_wrapping_for_mediator_unknown_to_sender() {
 
     println!("Mediator1 retrieved forwarded message \n{}\n", msg);
 
-    let msg = wrap_in_forward(
+    let (msg, _fwd_ids) = wrap_in_forward(
         &msg,
         None,
         &parsed_forward.next,
-        &vec!["did:example:mediator2#key-x25519-1".to_owned()],
+        &["did:example:mediator2#key-x25519-1".to_owned()],
         &AnonCryptAlg::default(),
         &did_resolver,
     )

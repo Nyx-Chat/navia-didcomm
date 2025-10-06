@@ -771,7 +771,7 @@ mod tests {
             SecretMaterial::Base58 {
                 private_key_base58: value,
             } => assert_eq!(value, base58key),
-            _ => assert!(false),
+            _ => panic!("Expected Base58 secret material"),
         }
     }
 }

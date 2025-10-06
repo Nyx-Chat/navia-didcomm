@@ -131,17 +131,21 @@ impl Message {
             (msg, None, to_kids)
         };
 
-        let (msg, messaging_service) =
+        let (msg, messaging_service, mut message_ids) =
             match wrap_in_forward_if_needed(&msg, to, &caching_resolver, options).await? {
-                Some((forward_msg, messaging_service)) => (forward_msg, Some(messaging_service)),
-                None => (msg, None),
+                Some((forward_msg, messaging_service, fwd_ids)) => (forward_msg, Some(messaging_service), fwd_ids),
+                None => (msg, None, Vec::new()),
             };
+
+        // Add the original message ID at the beginning
+        message_ids.insert(0, self.id.clone());
 
         let metadata = PackEncryptedMetadata {
             messaging_service,
             from_kid,
             sign_by_kid,
             to_kids,
+            message_ids,
         };
 
         Ok((msg, metadata))
@@ -273,6 +277,10 @@ pub struct PackEncryptedMetadata {
 
     /// Identifiers (DID URLs) of recipient keys used for message encryption.
     pub to_kids: Vec<String>,
+
+    /// List of message IDs in order: original message ID followed by forward message IDs.
+    /// If routing is not used, this will contain only the original message ID.
+    pub message_ids: Vec<String>,
 }
 
 /// Information about messaging service used for message preparation.
@@ -495,6 +503,7 @@ mod tests {
                     from_kid: Some(from_key.id.clone()),
                     sign_by_kid: None,
                     to_kids: to_keys.iter().map(|s| s.id.clone()).collect::<Vec<_>>(),
+                    message_ids: vec![MESSAGE_SIMPLE.id.clone()],
                 }
             );
 
@@ -815,6 +824,7 @@ mod tests {
                     from_kid: Some(from_key.id.clone()),
                     sign_by_kid: None,
                     to_kids: to_keys.iter().map(|s| s.id.clone()).collect::<Vec<_>>(),
+                    message_ids: vec![MESSAGE_SIMPLE.id.clone()],
                 }
             );
 
@@ -966,6 +976,7 @@ mod tests {
                     from_kid: Some(from_key.id.clone()),
                     sign_by_kid: Some(sign_by_key.id.clone()),
                     to_kids: to_keys.iter().map(|s| s.id.clone()).collect::<Vec<_>>(),
+                    message_ids: vec![MESSAGE_SIMPLE.id.clone()],
                 }
             );
 
@@ -1096,6 +1107,7 @@ mod tests {
                     from_kid: Some(from_key.id.clone()),
                     sign_by_kid: Some(sign_by_key.id.clone()),
                     to_kids: to_keys.iter().map(|s| s.id.clone()).collect::<Vec<_>>(),
+                    message_ids: vec![MESSAGE_SIMPLE.id.clone()],
                 }
             );
 
@@ -1353,6 +1365,7 @@ mod tests {
                     from_kid: None,
                     sign_by_kid: None,
                     to_kids: to_keys.iter().map(|s| s.id.clone()).collect::<Vec<_>>(),
+                    message_ids: vec![MESSAGE_SIMPLE.id.clone()],
                 }
             );
 
@@ -1520,6 +1533,7 @@ mod tests {
                     from_kid: None,
                     sign_by_kid: Some(sign_by_key.id.clone()),
                     to_kids: to_keys.iter().map(|s| s.id.clone()).collect::<Vec<_>>(),
+                    message_ids: vec![MESSAGE_SIMPLE.id.clone()],
                 }
             );
 
@@ -2063,11 +2077,11 @@ mod tests {
                 serde_json::to_string(&forward_at_mediator1.forwarded_msg)
                     .expect("Unable serialize forwarded message");
 
-            let forward_msg_for_mediator2 = wrap_in_forward(
+            let (forward_msg_for_mediator2, _fwd_ids) = wrap_in_forward(
                 &forwarded_msg_at_mediator1,
                 None,
                 &forward_at_mediator1.next,
-                &vec![MEDIATOR2_VERIFICATION_METHOD_KEY_AGREEM_X25519_1.id.clone()],
+                std::slice::from_ref(&MEDIATOR2_VERIFICATION_METHOD_KEY_AGREEM_X25519_1.id),
                 &AnonCryptAlg::default(),
                 &did_resolver,
             )
@@ -2818,10 +2832,10 @@ mod tests {
                 None,
                 &did_resolver,
                 &charlie_rotated_to_alice_secrets_resolver,
-                (&PackEncryptedOptions {
+                &PackEncryptedOptions {
                     forward: false,
                     ..PackEncryptedOptions::default()
-                }),
+                },
             )
             .await
             .expect("Unable pack_encrypted");
@@ -3023,8 +3037,8 @@ mod tests {
     fn test_pack_encrypted_options_no_forward() {
         let options = PackEncryptedOptions::no_forward();
 
-        assert_eq!(options.protect_sender, false);
-        assert_eq!(options.forward, false);
+        assert!(!options.protect_sender);
+        assert!(!options.forward);
         assert_eq!(options.forward_headers, None);
         assert_eq!(options.messaging_service, None);
         assert_eq!(options.enc_alg_auth, AuthCryptAlg::default());

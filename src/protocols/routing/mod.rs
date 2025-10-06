@@ -137,7 +137,7 @@ fn build_forward_message(
     forwarded_msg: &str,
     next: &str,
     headers: Option<&HashMap<String, Value>>,
-) -> Result<String> {
+) -> Result<(String, String)> {
     let body = json!({ "next": next });
 
     // TODO: Think how to avoid extra deserialization of forwarded_msg here.
@@ -149,7 +149,8 @@ fn build_forward_message(
     )
     .finalize();
 
-    let mut msg_builder = Message::build(generate_message_id(), FORWARD_MSG_TYPE.to_owned(), body);
+    let message_id = generate_message_id();
+    let mut msg_builder = Message::build(message_id.clone(), FORWARD_MSG_TYPE.to_owned(), body);
 
     if let Some(headers) = headers {
         for (name, value) in headers {
@@ -161,7 +162,8 @@ fn build_forward_message(
 
     let msg = msg_builder.finalize();
 
-    serde_json::to_string(&msg).kind(ErrorKind::InvalidState, "Unable serialize forward message")
+    let msg_str = serde_json::to_string(&msg).kind(ErrorKind::InvalidState, "Unable serialize forward message")?;
+    Ok((msg_str, message_id))
 }
 
 /// Tries to parse plaintext message into `ParsedForward` structure if the message is Forward.
@@ -240,7 +242,7 @@ pub async fn wrap_in_forward<'dr>(
     routing_keys: &[String],
     enc_alg_anon: &AnonCryptAlg,
     did_resolver: &'dr (dyn DIDResolver + 'dr),
-) -> Result<String> {
+) -> Result<(String, Vec<String>)> {
     let mut tos = routing_keys.to_owned();
 
     let mut nexts = tos.clone();
@@ -251,15 +253,17 @@ pub async fn wrap_in_forward<'dr>(
     nexts.reverse();
 
     let mut msg = msg.to_owned();
+    let mut message_ids = Vec::new();
 
     for (to_, next_) in tos.iter().zip(nexts.iter()) {
-        msg = build_forward_message(&msg, next_, headers)?;
-        msg = anoncrypt(to_, did_resolver, msg.as_bytes(), enc_alg_anon)
+        let (fwd_msg, fwd_id) = build_forward_message(&msg, next_, headers)?;
+        message_ids.push(fwd_id);
+        msg = anoncrypt(to_, did_resolver, fwd_msg.as_bytes(), enc_alg_anon)
             .await?
             .0;
     }
 
-    Ok(msg)
+    Ok((msg, message_ids))
 }
 
 pub(crate) async fn wrap_in_forward_if_needed<'dr>(
@@ -267,7 +271,7 @@ pub(crate) async fn wrap_in_forward_if_needed<'dr>(
     to: &str,
     did_resolver: &'dr (dyn DIDResolver + 'dr),
     options: &PackEncryptedOptions,
-) -> Result<Option<(String, MessagingServiceMetadata)>> {
+) -> Result<Option<(String, MessagingServiceMetadata, Vec<String>)>> {
     if !options.forward {
         return Ok(None);
     }
@@ -291,7 +295,7 @@ pub(crate) async fn wrap_in_forward_if_needed<'dr>(
         return Ok(None);
     }
 
-    let forward_msg = wrap_in_forward(
+    let (forward_msg, message_ids) = wrap_in_forward(
         msg,
         options.forward_headers.as_ref(),
         to,
@@ -306,5 +310,5 @@ pub(crate) async fn wrap_in_forward_if_needed<'dr>(
         service_endpoint: services_chain.first().unwrap().1.uri.clone(),
     };
 
-    Ok(Some((forward_msg, messaging_service)))
+    Ok(Some((forward_msg, messaging_service, message_ids)))
 }
