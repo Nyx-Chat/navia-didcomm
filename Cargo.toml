@@ -27,7 +27,7 @@ name = 'routing'
 
 [package]
 name = 'navia-didcomm'
-version = "1.1.1"
+version = "1.2.0"
 authors = ['Nyx Team <dev@nyx.chat>', 'Vyacheslav Gudkov <vyacheslav.gudkov@dsr-corporation.com>']
 edition = '2021'
 rust-version = '1.70'

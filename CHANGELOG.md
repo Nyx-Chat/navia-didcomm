@@ -1,3 +1,9 @@
+## [1.2.0](https://github.com/Nyx-Chat/navia-didcomm/compare/v1.1.1...v1.2.0) (2025-10-06)
+
+### ✨ Features
+
+* add message ID tracking in pack_encrypted and unpack metadata ([137eaf2](https://github.com/Nyx-Chat/navia-didcomm/commit/137eaf2a03da27339712848c6fb3546ac7cb1653))
+
 ## [1.1.1](https://github.com/Nyx-Chat/navia-didcomm/compare/v1.1.0...v1.1.1) (2025-09-15)
 
 ### 🐛 Bug Fixes
