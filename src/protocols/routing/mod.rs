@@ -262,7 +262,7 @@ pub async fn wrap_in_forward<'dr>(
         let (fwd_msg, fwd_id) = build_forward_message(&msg, next_, headers)?;
         message_ids.push(fwd_id);
         msg = anoncrypt(
-            &[to_.clone()],
+            std::slice::from_ref(to_),
             did_resolver,
             fwd_msg.as_bytes(),
             enc_alg_anon,

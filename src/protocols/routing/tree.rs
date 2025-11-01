@@ -114,6 +114,12 @@ pub struct RoutingTree {
     pub routed_groups: Vec<RouteGroup>,
 }
 
+impl Default for RoutingTree {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RoutingTree {
     /// Create a new empty routing tree
     pub fn new() -> Self {

@@ -133,7 +133,7 @@ async fn wrap_route_group<'dr>(
     for (recipient, path) in &group.individual_paths {
         path_groups
             .entry(path.clone())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(recipient.clone());
     }
 
@@ -204,13 +204,13 @@ async fn wrap_for_mediator_chain<'dr>(
 
         // Encrypt for this mediator
         current_msg = anoncrypt(
-            &[mediator.clone()],
+            std::slice::from_ref(mediator),
             did_resolver,
             current_msg.as_bytes(),
             enc_alg_anon,
         )
         .await
-        .context(format!("Failed to encrypt for mediator {}", mediator))?
+        .context(format!("Failed to encrypt for mediator {mediator}"))?
         .0;
 
         // The next iteration wraps for the previous mediator, pointing to this one

@@ -109,7 +109,7 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
         if to_kids.is_empty() {
             Err(err_msg(
                 ErrorKind::DIDUrlNotFound,
-                format!("No key agreements found for recipient {}", to_did),
+                format!("No key agreements found for recipient {to_did}"),
             ))?
         }
 
@@ -191,15 +191,14 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
         let (to_did, _) = did_or_url(recipient);
         let has_compatible_key = to_keys.iter().any(|key| {
             // Check if key.id belongs to this DID (either "did#key" or exact match)
-            key.id == to_did || key.id.starts_with(&format!("{}#", to_did))
+            key.id == to_did || key.id.starts_with(&format!("{to_did}#"))
         });
 
         if !has_compatible_key {
             Err(err_msg(
                 ErrorKind::NoCompatibleCrypto,
                 format!(
-                    "Recipient {} has no keys compatible with sender's key type ({:?}). All recipients must have compatible key types for multi-recipient encryption.",
-                    to_did, key_alg
+                    "Recipient {to_did} has no keys compatible with sender's key type ({key_alg:?}). All recipients must have compatible key types for multi-recipient encryption."
                 ),
             ))?
         }
