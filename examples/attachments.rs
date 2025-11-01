@@ -55,7 +55,7 @@ async fn main() {
 
     let (msg, metadata) = msg
         .pack_encrypted(
-            BOB_DID,
+            &[BOB_DID.to_string()],
             Some(ALICE_DID),
             None,
             &did_resolver,

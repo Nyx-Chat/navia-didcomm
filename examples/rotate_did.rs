@@ -65,7 +65,7 @@ async fn main() {
     // --- Packing encrypted and authenticated message ---
     let (msg, metadata) = msg
         .pack_encrypted(
-            BOB_DID,
+            &[BOB_DID.to_string()],
             Some(ALICE_DID),
             None,
             &did_resolver,

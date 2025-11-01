@@ -59,7 +59,7 @@ async fn single_mediator() {
 
     let (msg, metadata) = msg
         .pack_encrypted(
-            BOB_DID,
+            &[BOB_DID.to_string()],
             Some(ALICE_DID),
             None,
             &did_resolver,
@@ -150,7 +150,7 @@ async fn multiple_mediators_with_alternative_endpoints() {
 
     let (msg, metadata) = msg
         .pack_encrypted(
-            CHARLIE_DID,
+            &[CHARLIE_DID.to_string()],
             Some(ALICE_DID),
             None,
             &did_resolver,
@@ -310,7 +310,7 @@ async fn re_wrapping_for_final_recipient() {
 
     let (msg, metadata) = msg
         .pack_encrypted(
-            BOB_DID,
+            &[BOB_DID.to_string()],
             Some(ALICE_DID),
             None,
             &did_resolver,
@@ -418,7 +418,7 @@ async fn re_wrapping_for_mediator_unknown_to_sender() {
 
     let (msg, metadata) = msg
         .pack_encrypted(
-            BOB_DID,
+            &[BOB_DID.to_string()],
             Some(ALICE_DID),
             None,
             &did_resolver,

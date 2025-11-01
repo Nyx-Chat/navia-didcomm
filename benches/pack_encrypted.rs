@@ -28,7 +28,14 @@ async fn pack_encrypted(
     opts: &PackEncryptedOptions,
 ) {
     MESSAGE_SIMPLE
-        .pack_encrypted(to, from, sign_by, did_resolver, secrets_resolver, opts)
+        .pack_encrypted(
+            &[to.to_string()],
+            from,
+            sign_by,
+            did_resolver,
+            secrets_resolver,
+            opts,
+        )
         .await
         .expect("Unable pack_encrypted");
 }

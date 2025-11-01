@@ -7,18 +7,12 @@ mod test_vectors;
 pub(crate) use navia_didcomm as didcomm;
 
 use navia_didcomm::{
-    algorithms::{AnonCryptAlg, AuthCryptAlg},
-    did::resolvers::ExampleDIDResolver,
-    protocols::routing::try_parse_forward,
-    secrets::resolvers::ExampleSecretsResolver,
-    Message, PackEncryptedOptions, UnpackOptions,
+    did::resolvers::ExampleDIDResolver, secrets::resolvers::ExampleSecretsResolver, Message,
+    PackEncryptedOptions, UnpackOptions,
 };
 use serde_json::json;
-use std::collections::HashMap;
-use std::iter::FromIterator;
 use test_vectors::{
     ALICE_DID, ALICE_DID_DOC, ALICE_SECRETS, BOB_DID, BOB_DID_DOC, BOB_SECRETS, MEDIATOR1_DID_DOC,
-    MEDIATOR1_SECRETS,
 };
 
 #[tokio::main(flavor = "current_thread")]
@@ -46,79 +40,41 @@ async fn main() {
 
     let (msg, metadata) = msg
         .pack_encrypted(
-            "did:example:bob#key-p256-1",
+            &["did:example:bob#key-p256-1".to_string()],
             "did:example:alice#key-p256-1".into(),
             "did:example:alice#key-2".into(),
             &did_resolver,
             &secrets_resolver,
-            &PackEncryptedOptions {
-                protect_sender: true,
-                forward: true,
-                forward_headers: Some(HashMap::from_iter([(
-                    "expires_time".to_string(),
-                    json!(99999),
-                )])),
-                messaging_service: Some("did:example:bob#didcomm-1".to_string()),
-                enc_alg_auth: AuthCryptAlg::A256cbcHs512Ecdh1puA256kw,
-                enc_alg_anon: AnonCryptAlg::A256gcmEcdhEsA256kw,
-            },
+            &PackEncryptedOptions::default(),
         )
         .await
         .expect("Unable pack_encrypted");
 
-    println!("Encryption metadata is\n{:?}\n", metadata);
+    println!("Packed Message: {}", msg);
+    println!("Pack Metadata: {:?}", metadata);
+    println!("   - Sign-by KID: {:?}", metadata.sign_by_kid);
+    println!("   - To KIDs: {:?}", metadata.to_kids);
+    println!("   - Messaging service: {:?}", metadata.messaging_service);
 
-    // --- Sending message by Alice ---
-    println!("Alice is sending message \n{}\n", msg);
-
-    // --- Unpacking message by Mediator1 ---
-    let did_resolver = ExampleDIDResolver::new(vec![
-        ALICE_DID_DOC.clone(),
-        BOB_DID_DOC.clone(),
-        MEDIATOR1_DID_DOC.clone(),
-    ]);
-
-    let secrets_resolver = ExampleSecretsResolver::new(MEDIATOR1_SECRETS.clone());
-
-    let (msg, metadata) = Message::unpack(
+    // Bob unpacks the message
+    let bob_secrets_resolver = ExampleSecretsResolver::new(BOB_SECRETS.clone());
+    let (unpacked_msg, unpack_metadata) = Message::unpack(
         &msg,
         &did_resolver,
-        &secrets_resolver,
+        &bob_secrets_resolver,
         &UnpackOptions::default(),
     )
     .await
     .expect("Unable unpack");
 
-    println!("Mediator1 received message is \n{:?}\n", msg);
-
+    println!("✅ Advanced unpacking complete!");
+    println!("📄 Message: {}", unpacked_msg.body);
+    println!("🔐 Security features:");
+    println!("   - Authenticated: {}", unpack_metadata.authenticated);
+    println!("   - Encrypted: {}", unpack_metadata.encrypted);
+    println!("   - Non-repudiation: {}", unpack_metadata.non_repudiation);
     println!(
-        "Mediator1 received message unpack metadata is \n{:?}\n",
-        metadata
+        "   - Sender protected: {}",
+        !unpack_metadata.anonymous_sender
     );
-
-    // --- Forwarding message by Mediator1 ---
-    let msg = serde_json::to_string(&try_parse_forward(&msg).unwrap().forwarded_msg).unwrap();
-
-    println!("Mediator1 is forwarding message \n{}\n", msg);
-
-    // --- Unpacking message by Bob ---
-    let did_resolver = ExampleDIDResolver::new(vec![
-        ALICE_DID_DOC.clone(),
-        BOB_DID_DOC.clone(),
-        MEDIATOR1_DID_DOC.clone(),
-    ]);
-
-    let secrets_resolver = ExampleSecretsResolver::new(BOB_SECRETS.clone());
-
-    let (msg, metadata) = Message::unpack(
-        &msg,
-        &did_resolver,
-        &secrets_resolver,
-        &UnpackOptions::default(),
-    )
-    .await
-    .expect("Unable unpack");
-
-    println!("Bob received message is \n{:?}\n", msg);
-    println!("Bob received message unpack metadata is \n{:?}\n", metadata);
 }

@@ -1,4 +1,6 @@
 mod forward;
+pub mod tree;
+pub mod wrap;
 
 use std::collections::HashMap;
 
@@ -20,7 +22,7 @@ pub(crate) const FORWARD_MSG_TYPE: &str = "https://didcomm.org/routing/2.0/forwa
 
 pub(crate) const DIDCOMM_V2_PROFILE: &str = "didcomm/v2";
 
-async fn find_did_comm_service<'dr>(
+pub(crate) async fn find_did_comm_service<'dr>(
     did: &str,
     service_id: Option<&str>,
     did_resolver: &'dr (dyn DIDResolver + 'dr),
@@ -84,7 +86,7 @@ async fn find_did_comm_service<'dr>(
     }
 }
 
-async fn resolve_did_comm_services_chain<'dr>(
+pub(crate) async fn resolve_did_comm_services_chain<'dr>(
     to: &str,
     service_id: Option<&str>,
     did_resolver: &'dr (dyn DIDResolver + 'dr),
@@ -133,7 +135,7 @@ fn generate_message_id() -> String {
     Uuid::new_v4().to_string()
 }
 
-fn build_forward_message(
+pub(crate) fn build_forward_message(
     forwarded_msg: &str,
     next: &str,
     headers: Option<&HashMap<String, Value>>,
@@ -259,14 +261,20 @@ pub async fn wrap_in_forward<'dr>(
     for (to_, next_) in tos.iter().zip(nexts.iter()) {
         let (fwd_msg, fwd_id) = build_forward_message(&msg, next_, headers)?;
         message_ids.push(fwd_id);
-        msg = anoncrypt(to_, did_resolver, fwd_msg.as_bytes(), enc_alg_anon)
-            .await?
-            .0;
+        msg = anoncrypt(
+            &[to_.clone()],
+            did_resolver,
+            fwd_msg.as_bytes(),
+            enc_alg_anon,
+        )
+        .await?
+        .0;
     }
 
     Ok((msg, message_ids))
 }
 
+#[allow(dead_code)]
 pub(crate) async fn wrap_in_forward_if_needed<'dr>(
     msg: &str,
     to: &str,

@@ -236,7 +236,7 @@ async fn test_end_to_end_alice_to_bob_encrypted() {
     // Alice packs the message
     let (packed_msg, _metadata) = message
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[bob_did_doc.id.clone()],
             Some(&alice_did_doc.id),
             None, // no signing
             &did_resolver,
@@ -298,7 +298,7 @@ async fn test_end_to_end_alice_to_bob_signed_encrypted() {
     // Alice signs and encrypts the message
     let (packed_msg, _metadata) = message
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[bob_did_doc.id.clone()],
             Some(&alice_did_doc.id),
             Some("did:example:alice#key-1"), // Alice signs with her key
             &did_resolver,
@@ -364,7 +364,7 @@ async fn test_end_to_end_multi_party_conversation() {
 
     let (alice_packed, _) = alice_msg
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[bob_did_doc.id.clone()],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -407,7 +407,7 @@ async fn test_end_to_end_multi_party_conversation() {
 
     let (bob_packed, _) = bob_to_charlie
         .pack_encrypted(
-            &charlie_did_doc.id,
+            &[charlie_did_doc.id.clone()],
             Some(&bob_did_doc.id),
             None,
             &did_resolver,
@@ -451,7 +451,7 @@ async fn test_end_to_end_multi_party_conversation() {
 
     let (charlie_packed, _) = charlie_response
         .pack_encrypted(
-            &alice_did_doc.id,
+            &[alice_did_doc.id.clone()],
             Some(&charlie_did_doc.id),
             None,
             &did_resolver,
@@ -519,7 +519,7 @@ async fn test_end_to_end_cross_curve_messaging() {
 
     let (packed1, _) = alice_to_bob
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[bob_did_doc.id.clone()],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -559,7 +559,7 @@ async fn test_end_to_end_cross_curve_messaging() {
 
     let (packed2, _) = bob_to_alice
         .pack_encrypted(
-            &alice_did_doc.id,
+            &[alice_did_doc.id.clone()],
             Some(&bob_did_doc.id),
             None,
             &did_resolver,
@@ -607,7 +607,7 @@ async fn test_end_to_end_error_scenarios() {
 
     let result = message_to_unknown
         .pack_encrypted(
-            "did:example:unknown",
+            &["did:example:unknown".to_string()],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -630,7 +630,7 @@ async fn test_end_to_end_error_scenarios() {
 
     let (packed_for_bob, _) = alice_to_bob
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[bob_did_doc.id.clone()],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -697,7 +697,7 @@ async fn test_end_to_end_message_threading() {
 
     let (packed1, _) = msg1
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[bob_did_doc.id.clone()],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -736,7 +736,7 @@ async fn test_end_to_end_message_threading() {
 
     let (packed2, _) = msg2
         .pack_encrypted(
-            &alice_did_doc.id,
+            &[alice_did_doc.id.clone()],
             Some(&bob_did_doc.id),
             None,
             &did_resolver,
@@ -778,7 +778,7 @@ async fn test_end_to_end_message_threading() {
 
     let (packed3, _) = msg3
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[bob_did_doc.id.clone()],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -826,7 +826,7 @@ async fn test_comprehensive_error_scenarios() {
 
     let result = no_recipients_msg
         .pack_encrypted(
-            "", // Empty recipient
+            &[], // Empty recipient
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -849,7 +849,7 @@ async fn test_comprehensive_error_scenarios() {
 
     let result = malformed_did_msg
         .pack_encrypted(
-            "not-a-valid-did",
+            &["not-a-valid-did".to_string()],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -872,7 +872,7 @@ async fn test_comprehensive_error_scenarios() {
 
     let result = msg_to_sign
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[bob_did_doc.id.clone()],
             Some(&alice_did_doc.id),
             Some("did:example:nonexistent#key-999"), // Non-existent signing key
             &did_resolver,
@@ -895,7 +895,7 @@ async fn test_comprehensive_error_scenarios() {
 
     let (mut packed_msg, _) = valid_msg
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[bob_did_doc.id.clone()],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -953,7 +953,7 @@ async fn test_message_content_edge_cases() {
 
     let (packed_msg, _) = empty_body_msg
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[bob_did_doc.id.clone()],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -987,7 +987,7 @@ async fn test_message_content_edge_cases() {
 
     let (packed_msg, _) = large_body_msg
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[bob_did_doc.id.clone()],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -1027,7 +1027,7 @@ async fn test_message_content_edge_cases() {
 
     let (packed_msg, _) = unicode_msg
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[bob_did_doc.id.clone()],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -1072,7 +1072,7 @@ async fn test_resolver_edge_cases() {
 
     let result = msg
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[bob_did_doc.id.clone()],
             Some(&alice_did_doc.id),
             None,
             &empty_did_resolver,
@@ -1089,7 +1089,7 @@ async fn test_resolver_edge_cases() {
 
     let result = msg
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[bob_did_doc.id.clone()],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -1105,7 +1105,7 @@ async fn test_resolver_edge_cases() {
 
     let result = msg
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[bob_did_doc.id.clone()],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -1147,7 +1147,7 @@ async fn test_sequential_message_processing() {
         // Alice packs the message
         let (packed_msg, _) = msg
             .pack_encrypted(
-                &bob_did_doc.id,
+                &[bob_did_doc.id.clone()],
                 Some(&alice_did_doc.id),
                 None,
                 &did_resolver,
@@ -1217,7 +1217,7 @@ async fn test_message_size_and_performance_limits() {
 
         let (packed_msg, _) = msg
             .pack_encrypted(
-                &bob_did_doc.id,
+                &[bob_did_doc.id.clone()],
                 Some(&alice_did_doc.id),
                 None,
                 &did_resolver,

@@ -55,7 +55,7 @@ async fn non_repudiable_encryption() {
 
     let (msg, metadata) = msg
         .pack_encrypted(
-            BOB_DID,
+            &[BOB_DID.to_string()],
             Some(ALICE_DID),
             Some(ALICE_DID),
             &did_resolver,
@@ -147,7 +147,7 @@ async fn multi_recipient() {
 
     let (msg_bob, metadata_bob) = msg
         .pack_encrypted(
-            BOB_DID,
+            &[BOB_DID.to_string()],
             Some(ALICE_DID),
             None,
             &did_resolver,
@@ -157,6 +157,9 @@ async fn multi_recipient() {
         .await
         .expect("Unable pack_encrypted");
 
+    println!("Packed Message: {}", msg_bob);
+    println!("Pack Metadata: {:?}", metadata_bob);
+
     // --- Sending message by Alice to Bob ---
     println!("Alice is sending message to Bob \n{}\n", msg_bob);
     println!("Encryption metadata for Bob is\n{:?}\n", metadata_bob);
@@ -165,7 +168,7 @@ async fn multi_recipient() {
 
     let (msg_charlie, metadata_charlie) = msg
         .pack_encrypted(
-            CHARLIE_DID,
+            &[CHARLIE_DID.to_string()],
             Some(ALICE_DID),
             None,
             &did_resolver,
@@ -390,7 +393,7 @@ async fn repudiable_authenticated_encryption() {
 
     let (msg, metadata) = msg
         .pack_encrypted(
-            BOB_DID,
+            &[BOB_DID.to_string()],
             Some(ALICE_DID),
             None,
             &did_resolver,
@@ -479,7 +482,7 @@ async fn repudiable_non_authenticated_encryption() {
 
     let (msg, metadata) = msg
         .pack_encrypted(
-            BOB_DID,
+            &[BOB_DID.to_string()],
             None,
             None,
             &did_resolver,
