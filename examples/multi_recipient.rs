@@ -60,7 +60,7 @@ async fn multi_recipient_encryption() {
     println!("🔒 Encrypting message (Bob has 3 key agreement keys)...");
     let (packed_msg, pack_metadata) = message
         .pack_encrypted(
-            &[BOB_DID.to_string()],
+            &[BOB_DID],
             Some(ALICE_DID),
             None,
             &did_resolver,

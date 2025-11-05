@@ -199,7 +199,7 @@ mod tests {
 
         let (packed_msg, metadata) = msg
             .pack_encrypted(
-                &[recipient.to_string()],
+                &[recipient],
                 Some(sender),
                 None,
                 &sender_did_resolver,

@@ -29,7 +29,7 @@ async fn pack_encrypted(
 ) {
     MESSAGE_SIMPLE
         .pack_encrypted(
-            &[to.to_string()],
+            &[to],
             from,
             sign_by,
             did_resolver,

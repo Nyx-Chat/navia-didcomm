@@ -46,7 +46,7 @@ async fn test_multi_recipient_authcrypt() {
     // Pack for multiple recipients
     let (packed, metadata) = message
         .pack_encrypted(
-            &[BOB_DID.to_string(), CHARLIE_DID.to_string()],
+            &[BOB_DID, CHARLIE_DID],
             Some(ALICE_DID),
             None,
             &did_resolver,
@@ -126,7 +126,7 @@ async fn test_multi_recipient_anoncrypt() {
     // Pack anonymously for multiple recipients
     let (packed, metadata) = message
         .pack_encrypted(
-            &[BOB_DID.to_string(), CHARLIE_DID.to_string()],
+            &[BOB_DID, CHARLIE_DID],
             None, // No from - anonymous
             None,
             &did_resolver,
@@ -226,7 +226,7 @@ async fn test_single_recipient_still_works() {
     // Single recipient in array
     let (packed, metadata) = message
         .pack_encrypted(
-            &[BOB_DID.to_string()],
+            &[BOB_DID],
             Some(ALICE_DID),
             None,
             &did_resolver,
@@ -278,7 +278,7 @@ async fn test_duplicate_recipients() {
     // Same recipient appears twice in the array
     let result = message
         .pack_encrypted(
-            &[BOB_DID.to_string(), BOB_DID.to_string()],
+            &[BOB_DID, BOB_DID],
             Some(ALICE_DID),
             None,
             &did_resolver,
@@ -337,7 +337,7 @@ async fn test_multi_recipient_with_same_routing_keys() {
     // Pack with forwarding enabled for Bob (who uses mediator1)
     let results = message
         .pack_encrypted(
-            &[BOB_DID.to_string()],
+            &[BOB_DID],
             Some(ALICE_DID),
             None,
             &did_resolver,
@@ -396,7 +396,7 @@ async fn test_multi_recipient_with_different_routing_keys() {
     // Pack with forwarding enabled for both Bob and Charlie (different mediators)
     let results = message
         .pack_encrypted(
-            &[BOB_DID.to_string(), CHARLIE_DID.to_string()],
+            &[BOB_DID, CHARLIE_DID],
             Some(ALICE_DID),
             None,
             &did_resolver,
@@ -453,7 +453,7 @@ async fn test_multi_recipient_forward_with_anoncrypt() {
     // Pack anonymously with forwarding enabled
     let results = message
         .pack_encrypted(
-            &[BOB_DID.to_string(), CHARLIE_DID.to_string()],
+            &[BOB_DID, CHARLIE_DID],
             None, // Anonymous - no from
             None,
             &did_resolver,
@@ -502,7 +502,7 @@ async fn test_multi_recipient_mixed_key_types() {
     // Pack for multiple recipients with potentially different key types
     let (packed, metadata) = message
         .pack_encrypted(
-            &[BOB_DID.to_string(), CHARLIE_DID.to_string()],
+            &[BOB_DID, CHARLIE_DID],
             Some(ALICE_DID),
             None,
             &did_resolver,

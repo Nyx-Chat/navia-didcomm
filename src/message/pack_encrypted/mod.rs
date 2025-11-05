@@ -83,7 +83,7 @@ impl Message {
     /// TODO: verify and update errors list
     pub async fn pack_encrypted<'dr, 'sr>(
         &self,
-        to: &[String],
+        to: &[&str],
         from: Option<&str>,
         sign_by: Option<&str>,
         did_resolver: &'dr (dyn DIDResolver + 'dr),
@@ -96,8 +96,8 @@ impl Message {
         let unique_to: Vec<String> = {
             let mut seen = std::collections::HashSet::new();
             to.iter()
-                .filter(|did| seen.insert((*did).clone()))
-                .cloned()
+                .filter(|did| seen.insert(*did))
+                .map(|s| s.to_string())
                 .collect()
         };
 
@@ -190,7 +190,7 @@ impl Message {
 
     fn _validate_pack_encrypted(
         &self,
-        to: &[String],
+        to: &[&str],
         from: Option<&str>,
         sign_by: Option<&str>,
     ) -> Result<()> {
@@ -584,7 +584,7 @@ mod tests {
 
             let (msg, metadata) = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    &[to.to_string()],
+                    &[to],
                     Some(from),
                     None,
                     &did_resolver,
@@ -906,7 +906,7 @@ mod tests {
 
             let (msg, metadata) = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    &[to.to_string()],
+                    &[to],
                     Some(from),
                     None,
                     &did_resolver,
@@ -1061,7 +1061,7 @@ mod tests {
 
             let (msg, metadata) = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    &[to.to_string()],
+                    &[to],
                     Some(from),
                     Some(sign_by),
                     &did_resolver,
@@ -1197,7 +1197,7 @@ mod tests {
 
             let (msg, metadata) = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    &[to.to_string()],
+                    &[to],
                     Some(from),
                     Some(sign_by),
                     &did_resolver,
@@ -1457,7 +1457,7 @@ mod tests {
 
             let (msg, metadata) = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    &[to.to_string()],
+                    &[to],
                     None,
                     None,
                     &did_resolver,
@@ -1628,7 +1628,7 @@ mod tests {
 
             let (msg, metadata) = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    &[to.to_string()],
+                    &[to],
                     None,
                     Some(sign_by),
                     &did_resolver,
@@ -1719,7 +1719,7 @@ mod tests {
 
             let (msg, pack_metadata) = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    &[to.to_string()],
+                    &[to],
                     from,
                     sign_by,
                     &did_resolver,
@@ -1905,7 +1905,7 @@ mod tests {
 
             let (packed_msg, pack_metadata) = msg
                 .pack_encrypted(
-                    &[to.to_string()],
+                    &[to],
                     from,
                     sign_by,
                     &did_resolver,
@@ -2156,7 +2156,7 @@ mod tests {
 
             let (msg, pack_metadata) = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    &[to.to_string()],
+                    &[to],
                     from,
                     sign_by,
                     &did_resolver,
@@ -2274,7 +2274,7 @@ mod tests {
 
         let res = MESSAGE_SIMPLE
             .pack_encrypted(
-                &[BOB_DID.to_string()],
+                &[BOB_DID],
                 "not-a-did".into(),
                 None,
                 &did_resolver,
@@ -2304,7 +2304,7 @@ mod tests {
 
         let res = MESSAGE_SIMPLE
             .pack_encrypted(
-                &["not-a-did".to_string()],
+                &["not-a-did"],
                 None,
                 None,
                 &did_resolver,
@@ -2334,7 +2334,7 @@ mod tests {
 
         let res = MESSAGE_SIMPLE
             .pack_encrypted(
-                &[BOB_DID.to_string()],
+                &[BOB_DID],
                 ALICE_DID.into(),
                 "not-a-did".into(),
                 &did_resolver,
@@ -2366,7 +2366,7 @@ mod tests {
         msg.from = CHARLIE_DID.to_string().into();
         let res = msg
             .pack_encrypted(
-                &[BOB_DID.to_string()],
+                &[BOB_DID],
                 ALICE_DID.into(),
                 None,
                 &did_resolver,
@@ -2398,7 +2398,7 @@ mod tests {
         msg.to = Some(vec![CHARLIE_DID.to_string()]);
         let res = msg
             .pack_encrypted(
-                &[BOB_DID.to_string()],
+                &[BOB_DID],
                 ALICE_DID.into(),
                 None,
                 &did_resolver,
@@ -2430,7 +2430,7 @@ mod tests {
         msg.to = Some(vec![CHARLIE_DID.to_string(), BOB_DID.to_string()]);
         let _ = msg
             .pack_encrypted(
-                &[BOB_DID.to_string()],
+                &[BOB_DID],
                 ALICE_DID.into(),
                 None,
                 &did_resolver,
@@ -2454,7 +2454,7 @@ mod tests {
         msg.from = "not-a-did".to_string().into();
         let res = msg
             .pack_encrypted(
-                &[BOB_DID.to_string()],
+                &[BOB_DID],
                 "not-a-did".into(),
                 None,
                 &did_resolver,
@@ -2486,7 +2486,7 @@ mod tests {
         msg.to = Some(vec!["not-a-did".to_string()]);
         let res = msg
             .pack_encrypted(
-                &["not-a-did".to_string()],
+                &["not-a-did"],
                 ALICE_DID.into(),
                 None,
                 &did_resolver,
@@ -2516,7 +2516,7 @@ mod tests {
 
         let _ = MESSAGE_SIMPLE
             .pack_encrypted(
-                &[BOB_DID.to_string()],
+                &[BOB_DID],
                 "did:example:alice#key-x25519-1".into(),
                 None,
                 &did_resolver,
@@ -2540,7 +2540,7 @@ mod tests {
         msg.to = Some(vec![ALICE_DID.to_string(), BOB_DID.to_string()]);
         let _ = msg
             .pack_encrypted(
-                &["did:example:bob#key-x25519-1".to_string()],
+                &["did:example:bob#key-x25519-1"],
                 None,
                 None,
                 &did_resolver,
@@ -2562,7 +2562,7 @@ mod tests {
 
         let _ = MESSAGE_SIMPLE
             .pack_encrypted(
-                &[BOB_DID.to_string()],
+                &[BOB_DID],
                 ALICE_DID.into(),
                 CHARLIE_DID.into(),
                 &did_resolver,
@@ -2587,7 +2587,7 @@ mod tests {
 
         let res = msg
             .pack_encrypted(
-                &[BOB_DID.to_string()],
+                &[BOB_DID],
                 ALICE_DID.into(),
                 None,
                 &did_resolver,
@@ -2619,7 +2619,7 @@ mod tests {
         msg.to = Some(vec!["did:example:bob#key-x25519-1".into()]);
         let res = msg
             .pack_encrypted(
-                &[BOB_DID.to_string()],
+                &[BOB_DID],
                 None,
                 None,
                 &did_resolver,
@@ -2651,7 +2651,7 @@ mod tests {
         msg.from = "did:example:unknown".to_string().into();
         let res = msg
             .pack_encrypted(
-                &[BOB_DID.to_string()],
+                &[BOB_DID],
                 "did:example:unknown".into(),
                 None,
                 &did_resolver,
@@ -2679,7 +2679,7 @@ mod tests {
         let from = ALICE_DID.to_string() + "#unknown-key";
         let res = MESSAGE_SIMPLE
             .pack_encrypted(
-                &[BOB_DID.to_string()],
+                &[BOB_DID],
                 from.as_str().into(),
                 None,
                 &did_resolver,
@@ -2711,7 +2711,7 @@ mod tests {
         msg.to = Some(vec!["did:example:unknown".into()]);
         let res = msg
             .pack_encrypted(
-                &["did:example:unknown".to_string()],
+                &["did:example:unknown"],
                 None,
                 None,
                 &did_resolver,
@@ -2742,7 +2742,7 @@ mod tests {
         let to = BOB_DID.to_string() + "#unknown-key";
         let res = MESSAGE_SIMPLE
             .pack_encrypted(
-                &[to.clone()],
+                &[&to],
                 ALICE_DID.into(),
                 None,
                 &did_resolver,
@@ -2773,7 +2773,7 @@ mod tests {
         let sign_by = ALICE_DID.to_string() + "#unknown-key";
         let res = MESSAGE_SIMPLE
             .pack_encrypted(
-                &[BOB_DID.to_string()],
+                &[BOB_DID],
                 ALICE_DID.into(),
                 sign_by.as_str().into(),
                 &did_resolver,
@@ -2803,7 +2803,7 @@ mod tests {
 
         let res = MESSAGE_SIMPLE
             .pack_encrypted(
-                &[BOB_DID.to_string()],
+                &[BOB_DID],
                 "did:example:alice#key-x25519-not-in-secrets-1".into(),
                 None,
                 &did_resolver,
@@ -2835,7 +2835,7 @@ mod tests {
 
         let res = MESSAGE_SIMPLE
             .pack_encrypted(
-                &[BOB_DID.to_string()],
+                &[BOB_DID],
                 ALICE_DID.into(),
                 "did:example:alice#key-not-in-secrets-1".into(),
                 &did_resolver,
@@ -2866,7 +2866,7 @@ mod tests {
         let to = "did:example:bob#key-x25519-not-secrets-1";
         let _ = MESSAGE_SIMPLE
             .pack_encrypted(
-                &[to.to_string()],
+                &[to],
                 ALICE_DID.into(),
                 None,
                 &did_resolver,
@@ -2920,7 +2920,7 @@ mod tests {
 
             let res = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    &[to.to_string()],
+                    &[to],
                     from,
                     None,
                     &did_resolver,
@@ -2955,7 +2955,7 @@ mod tests {
 
         let (packed_msg, _pack_metadata) = MESSAGE_FROM_PRIOR_FULL
             .pack_encrypted(
-                &[BOB_DID.to_string()],
+                &[BOB_DID],
                 Some(ALICE_DID),
                 None,
                 &did_resolver,

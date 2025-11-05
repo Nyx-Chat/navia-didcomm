@@ -40,7 +40,7 @@ async fn main() {
 
     let (msg, metadata) = msg
         .pack_encrypted(
-            &["did:example:bob#key-p256-1".to_string()],
+            &["did:example:bob#key-p256-1"],
             "did:example:alice#key-p256-1".into(),
             "did:example:alice#key-2".into(),
             &did_resolver,

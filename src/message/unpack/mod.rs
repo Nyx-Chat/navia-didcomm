@@ -652,7 +652,7 @@ mod test {
 
             let (msg, pack_metadata) = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    &[to.to_string()],
+                    &[to],
                     from,
                     sign_by,
                     &did_resolver,
@@ -780,7 +780,7 @@ mod test {
 
             let (msg, pack_metadata) = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    &[to.to_string()],
+                    &[&to],
                     from,
                     sign_by,
                     &did_resolver,
@@ -1027,7 +1027,7 @@ mod test {
 
             let (packed, _) = msg
                 .pack_encrypted(
-                    &[to.to_string()],
+                    &[&to],
                     None,
                     None,
                     &did_resolver,
@@ -1165,7 +1165,7 @@ mod test {
 
             let (packed, _) = msg
                 .pack_encrypted(
-                    &[to.to_string()],
+                    &[to],
                     None,
                     Some(sign_by),
                     &did_resolver,
@@ -1361,7 +1361,7 @@ mod test {
 
             let (packed, _) = msg
                 .pack_encrypted(
-                    &[to.to_string()],
+                    &[to],
                     Some(from),
                     None,
                     &did_resolver,
@@ -1540,7 +1540,7 @@ mod test {
 
             let (packed, _) = msg
                 .pack_encrypted(
-                    &[to.to_string()],
+                    &[to],
                     Some(from),
                     None,
                     &did_resolver,
@@ -1656,7 +1656,7 @@ mod test {
 
             let (packed, _) = msg
                 .pack_encrypted(
-                    &[to.to_string()],
+                    &[to],
                     Some(from),
                     Some(sign_by),
                     &did_resolver,
@@ -1778,7 +1778,7 @@ mod test {
 
             let (packed, _) = msg
                 .pack_encrypted(
-                    &[to.to_string()],
+                    &[to],
                     Some(from),
                     Some(sign_by),
                     &did_resolver,
