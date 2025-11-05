@@ -93,12 +93,9 @@ impl Message {
         self._validate_pack_encrypted(to, from, sign_by)?;
 
         // Deduplicate recipients (if same DID appears multiple times, use only once)
-        let unique_to: Vec<String> = {
+        let unique_to: Vec<&str> = {
             let mut seen = std::collections::HashSet::new();
-            to.iter()
-                .filter(|did| seen.insert(*did))
-                .map(|s| s.to_string())
-                .collect()
+            to.iter().filter(|did| seen.insert(*did)).copied().collect()
         };
 
         // Use caching resolver to avoid duplicate DID resolutions
@@ -259,7 +256,7 @@ impl Message {
     /// This method is separated from pack_encrypted to allow reuse in routing protocols
     async fn _pack_jwe_envelope<'dr, 'sr>(
         &self,
-        to: &[String],
+        to: &[&str],
         from: Option<&str>,
         sign_by: Option<&str>,
         did_resolver: &'dr (dyn DIDResolver + 'dr),

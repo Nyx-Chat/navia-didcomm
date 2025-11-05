@@ -204,7 +204,7 @@ async fn wrap_for_mediator_chain<'dr>(
 
         // Encrypt for this mediator
         current_msg = anoncrypt(
-            std::slice::from_ref(mediator),
+            &[mediator.as_str()],
             did_resolver,
             current_msg.as_bytes(),
             enc_alg_anon,

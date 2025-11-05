@@ -22,7 +22,7 @@ use crate::{
 };
 
 pub(crate) async fn authcrypt<'dr, 'sr>(
-    to: &[String],
+    to: &[&str],
     from: &str,
     did_resolver: &'dr (dyn DIDResolver + 'dr),
     secrets_resolver: &'sr (dyn SecretsResolver + 'sr),

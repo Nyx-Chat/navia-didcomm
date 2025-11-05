@@ -21,7 +21,7 @@ use crate::{
 };
 
 pub(crate) async fn anoncrypt<'dr, 'sr>(
-    to: &[String],
+    to: &[&str],
     did_resolver: &'dr (dyn DIDResolver + 'dr),
     msg: &[u8],
     enc_alg_anon: &AnonCryptAlg,

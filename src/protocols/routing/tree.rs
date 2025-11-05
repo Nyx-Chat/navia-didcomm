@@ -162,7 +162,7 @@ impl RoutingTree {
 
 /// Analyzes recipient DIDs and builds their routing paths.
 pub async fn analyze_routing_paths<'dr>(
-    recipients: &[String],
+    recipients: &[&str],
     service_id: Option<&str>,
     did_resolver: &'dr (dyn DIDResolver + 'dr),
 ) -> Result<Vec<RoutingPath>> {
@@ -178,7 +178,7 @@ pub async fn analyze_routing_paths<'dr>(
         let path = if services_chain.is_empty() {
             // No services found - treat as direct delivery (no routing)
             RoutingPath {
-                recipient_did: recipient.to_owned(),
+                recipient_did: recipient.to_string(),
                 mediators: Vec::new(),
                 service_endpoint: String::new(), // No endpoint needed for direct delivery
                 service_id: String::new(),
@@ -204,7 +204,7 @@ pub async fn analyze_routing_paths<'dr>(
             let service_id = services_chain.last().unwrap().0.clone();
 
             RoutingPath {
-                recipient_did: recipient.to_owned(),
+                recipient_did: recipient.to_string(),
                 mediators,
                 service_endpoint,
                 service_id,
