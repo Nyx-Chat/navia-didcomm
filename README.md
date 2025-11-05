@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/License-Proprietary-red.svg)](./LICENSE)
 [![GitHub Package Registry](https://img.shields.io/badge/GitHub%20Packages-private-blue.svg)](https://github.com/nyx-chat/navia-didcomm/packages)
 [![Build Status](https://github.com/nyx-chat/navia-didcomm/workflows/PR%20Validation/badge.svg)](https://github.com/nyx-chat/navia-didcomm/actions)
-[![Tests](https://img.shields.io/badge/tests-190%20passing-green.svg)](https://github.com/nyx-chat/navia-didcomm/actions)
+[![Tests](https://img.shields.io/badge/tests-221%20passing-green.svg)](https://github.com/nyx-chat/navia-didcomm/actions)
 
 **Production-ready DIDComm v2 implementation for secure peer-to-peer messaging**
 
@@ -14,8 +14,9 @@ Navia-DIDComm is a complete, modern implementation of the [DIDComm v2 specificat
 - 🔒 **Complete DIDComm v2 Support** - Full specification implementation
 - 🚀 **Production Ready** - Comprehensive testing, security audits, modern dependencies
 - 🔐 **Modern Cryptography** - X25519, P-256, P-384 ✅, P-521, Ed25519, Secp256k1
-- 📨 **Secure Messaging** - Encrypted (anoncrypt/authcrypt) and signed messages  
-- 🔄 **Message Routing** - Forward protocol and mediation support
+- 📨 **Secure Messaging** - Encrypted (anoncrypt/authcrypt) and signed messages
+- 👥 **Multi-Recipient Support** - Efficient encryption for multiple recipients with shared CEK
+- 🔄 **Message Routing** - Forward protocol, mediation support, and routing optimization
 - 🔑 **DID Rotation** - Full `fromPrior` field support
 - ⚡ **High Performance** - Optimized for speed and low memory usage
 
@@ -115,7 +116,7 @@ let secrets_resolver = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
 
 let (msg, metadata) = msg
     .pack_encrypted(
-        BOB_DID,
+        &[BOB_DID],
         Some(ALICE_DID),
         None,
         &did_resolver,
@@ -123,7 +124,10 @@ let (msg, metadata) = msg
         &PackEncryptedOptions::default(),
     )
     .await
-    .expect("Unable pack_encrypted");
+    .expect("Unable pack_encrypted")
+    .into_iter()
+    .next()
+    .unwrap();
 
 println!("Encryption metadata is\n{:?}\n", metadata);
 
@@ -152,7 +156,7 @@ println!("Receved message unpack metadata is \n{:?}\n", metadata);
 ```rust
 let (msg, metadata) = msg
     .pack_encrypted(
-        BOB_DID,
+        &[BOB_DID],
         None, // Keep sender as None here
         None,
         &did_resolver,
@@ -160,7 +164,10 @@ let (msg, metadata) = msg
         &PackEncryptedOptions::default(),
     )
     .await
-    .expect("Unable pack_encrypted");
+    .expect("Unable pack_encrypted")
+    .into_iter()
+    .next()
+    .unwrap();
 ```
 
 **Encryption with non-repudiation** example:
@@ -168,7 +175,7 @@ let (msg, metadata) = msg
 ```rust
 let (msg, metadata) = msg
     .pack_encrypted(
-        BOB_DID,
+        &[BOB_DID],
         Some(ALICE_DID),
         Some(ALICE_DID), // Provide information about signer here
         &did_resolver,
@@ -176,7 +183,33 @@ let (msg, metadata) = msg
         &PackEncryptedOptions::default(),
     )
     .await
+    .expect("Unable pack_encrypted")
+    .into_iter()
+    .next()
+    .unwrap();
+```
+
+**Multi-recipient encryption** example:
+
+```rust
+// Send to multiple recipients with shared encryption
+let results = msg
+    .pack_encrypted(
+        &[BOB_DID, CHARLIE_DID],
+        Some(ALICE_DID),
+        None,
+        &did_resolver,
+        &secrets_resolver,
+        &PackEncryptedOptions::default(),
+    )
+    .await
     .expect("Unable pack_encrypted");
+
+// Results contain one encrypted message per routing destination
+for (packed_msg, metadata) in results {
+    println!("Send to: {}", metadata.messaging_service.unwrap().service_endpoint);
+    // Send packed_msg to the service endpoint
+}
 ```
 
 ### 2. Build an unencrypted but Signed DIDComm message
