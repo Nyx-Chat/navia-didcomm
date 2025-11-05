@@ -244,7 +244,10 @@ async fn test_end_to_end_alice_to_bob_encrypted() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Alice failed to pack message");
+        .expect("Alice failed to pack message")
+        .into_iter()
+        .next()
+        .unwrap();
 
     // Bob receives and unpacks the message
     let (unpacked_msg, unpack_metadata) = Message::unpack(
@@ -306,7 +309,10 @@ async fn test_end_to_end_alice_to_bob_signed_encrypted() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Alice failed to pack signed message");
+        .expect("Alice failed to pack signed message")
+        .into_iter()
+        .next()
+        .unwrap();
 
     // Bob unpacks and verifies
     let (unpacked_msg, unpack_metadata) = Message::unpack(
@@ -372,7 +378,10 @@ async fn test_end_to_end_multi_party_conversation() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Alice failed to pack message to Bob");
+        .expect("Alice failed to pack message to Bob")
+        .into_iter()
+        .next()
+        .unwrap();
 
     let (bob_received, _) = Message::unpack(
         &alice_packed,
@@ -415,7 +424,10 @@ async fn test_end_to_end_multi_party_conversation() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Bob failed to pack message to Charlie");
+        .expect("Bob failed to pack message to Charlie")
+        .into_iter()
+        .next()
+        .unwrap();
 
     let (charlie_received, _charlie_metadata) = Message::unpack(
         &bob_packed,
@@ -459,7 +471,10 @@ async fn test_end_to_end_multi_party_conversation() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Charlie failed to pack response to Alice");
+        .expect("Charlie failed to pack response to Alice")
+        .into_iter()
+        .next()
+        .unwrap();
 
     let (alice_received_response, _) = Message::unpack(
         &charlie_packed,
@@ -527,7 +542,10 @@ async fn test_end_to_end_cross_curve_messaging() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Alice→Bob cross-curve packing failed");
+        .expect("Alice→Bob cross-curve packing failed")
+        .into_iter()
+        .next()
+        .unwrap();
 
     let (unpacked1, metadata1) = Message::unpack(
         &packed1,
@@ -567,7 +585,10 @@ async fn test_end_to_end_cross_curve_messaging() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Bob→Alice cross-curve packing failed");
+        .expect("Bob→Alice cross-curve packing failed")
+        .into_iter()
+        .next()
+        .unwrap();
 
     let (unpacked2, metadata2) = Message::unpack(
         &packed2,
@@ -638,7 +659,10 @@ async fn test_end_to_end_error_scenarios() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Should successfully pack message for Bob");
+        .expect("Should successfully pack message for Bob")
+        .into_iter()
+        .next()
+        .unwrap();
 
     // Alice tries to unpack Bob's message (should fail)
     let alice_unpack_result = Message::unpack(
@@ -705,6 +729,9 @@ async fn test_end_to_end_message_threading() {
             &PackEncryptedOptions::default(),
         )
         .await
+        .unwrap()
+        .into_iter()
+        .next()
         .unwrap();
 
     let (unpacked1, _) = Message::unpack(
@@ -744,6 +771,9 @@ async fn test_end_to_end_message_threading() {
             &PackEncryptedOptions::default(),
         )
         .await
+        .unwrap()
+        .into_iter()
+        .next()
         .unwrap();
 
     let (unpacked2, _) = Message::unpack(
@@ -786,6 +816,9 @@ async fn test_end_to_end_message_threading() {
             &PackEncryptedOptions::default(),
         )
         .await
+        .unwrap()
+        .into_iter()
+        .next()
         .unwrap();
 
     let (unpacked3, _) = Message::unpack(
@@ -903,7 +936,10 @@ async fn test_comprehensive_error_scenarios() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Should pack successfully");
+        .expect("Should pack successfully")
+        .into_iter()
+        .next()
+        .unwrap();
 
     // Corrupt the message by modifying a character
     packed_msg = packed_msg.replace('a', "x");
@@ -961,7 +997,10 @@ async fn test_message_content_edge_cases() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Should pack empty body successfully");
+        .expect("Should pack empty body successfully")
+        .into_iter()
+        .next()
+        .unwrap();
 
     let (unpacked_msg, _) = Message::unpack(
         &packed_msg,
@@ -995,7 +1034,10 @@ async fn test_message_content_edge_cases() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Should pack large body successfully");
+        .expect("Should pack large body successfully")
+        .into_iter()
+        .next()
+        .unwrap();
 
     let (unpacked_msg, _) = Message::unpack(
         &packed_msg,
@@ -1035,7 +1077,10 @@ async fn test_message_content_edge_cases() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Should pack unicode message successfully");
+        .expect("Should pack unicode message successfully")
+        .into_iter()
+        .next()
+        .unwrap();
 
     let (unpacked_msg, _) = Message::unpack(
         &packed_msg,
@@ -1155,7 +1200,10 @@ async fn test_sequential_message_processing() {
                 &PackEncryptedOptions::default(),
             )
             .await
-            .unwrap_or_else(|_| panic!("Should pack message {}", i));
+            .unwrap_or_else(|_| panic!("Should pack message {}", i))
+            .into_iter()
+            .next()
+            .unwrap();
 
         // Bob unpacks the message
         let (unpacked_msg, _) = Message::unpack(
@@ -1225,7 +1273,10 @@ async fn test_message_size_and_performance_limits() {
                 &PackEncryptedOptions::default(),
             )
             .await
-            .unwrap_or_else(|_| panic!("Should pack {} message successfully", size_name));
+            .unwrap_or_else(|_| panic!("Should pack {} message successfully", size_name))
+            .into_iter()
+            .next()
+            .unwrap();
 
         let pack_duration = start_time.elapsed();
 

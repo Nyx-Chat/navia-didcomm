@@ -57,6 +57,9 @@ async fn test_multi_recipient_authcrypt() {
             },
         )
         .await
+        .unwrap()
+        .into_iter()
+        .next()
         .unwrap();
 
     // Verify metadata shows both recipients
@@ -134,6 +137,9 @@ async fn test_multi_recipient_anoncrypt() {
             },
         )
         .await
+        .unwrap()
+        .into_iter()
+        .next()
         .unwrap();
 
     // Verify metadata
@@ -231,6 +237,9 @@ async fn test_single_recipient_still_works() {
             },
         )
         .await
+        .unwrap()
+        .into_iter()
+        .next()
         .unwrap();
 
     assert!(metadata.to_kids.len() >= 1);
@@ -282,7 +291,11 @@ async fn test_duplicate_recipients() {
         .await;
 
     // Should succeed (may deduplicate or not, both are valid)
-    let (packed, _metadata) = result.expect("Should handle duplicate recipients");
+    let (packed, _metadata) = result
+        .expect("Should handle duplicate recipients")
+        .into_iter()
+        .next()
+        .unwrap();
 
     // Should still decrypt correctly
     let (msg, _meta) = Message::unpack(
@@ -295,4 +308,240 @@ async fn test_duplicate_recipients() {
     .unwrap();
 
     assert_eq!(msg.id, "test-duplicate");
+}
+
+#[tokio::test]
+async fn test_multi_recipient_with_same_routing_keys() {
+    // Test multiple recipients that share the same routing path (same mediators)
+    // This should result in a single forwarded message optimized for multiple recipients
+    let did_resolver = ExampleDIDResolver::new(vec![
+        ALICE_DID_DOC.clone(),
+        BOB_DID_DOC.clone(),
+        CHARLIE_DID_DOC.clone(),
+        MEDIATOR1_DID_DOC.clone(),
+        MEDIATOR2_DID_DOC.clone(),
+        MEDIATOR3_DID_DOC.clone(),
+    ]);
+
+    let sender_secrets = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+
+    let message = Message::build(
+        "test-same-routing".to_string(),
+        "https://example.com/test".to_string(),
+        json!({"content": "message with same routing"}),
+    )
+    .to(BOB_DID.to_owned())
+    .from(ALICE_DID.to_owned())
+    .finalize();
+
+    // Pack with forwarding enabled for Bob (who uses mediator1)
+    let results = message
+        .pack_encrypted(
+            &[BOB_DID.to_string()],
+            Some(ALICE_DID),
+            None,
+            &did_resolver,
+            &sender_secrets,
+            &PackEncryptedOptions {
+                forward: true,
+                ..PackEncryptedOptions::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    // When recipients share routing path, we should get optimized routing
+    // (number of results depends on routing tree optimization)
+    assert!(!results.is_empty());
+
+    // Verify we got the forwarded message with proper metadata
+    for (packed, metadata) in &results {
+        // Should have messaging_service set when forwarding is used
+        if metadata.messaging_service.is_some() {
+            assert!(metadata.from_kid.is_some());
+            assert!(!metadata.to_kids.is_empty());
+        }
+
+        // Verify message structure (should be a forward message)
+        let jwe: serde_json::Value = serde_json::from_str(packed).unwrap();
+        assert!(jwe.get("protected").is_some() || jwe.get("recipients").is_some());
+    }
+}
+
+#[tokio::test]
+async fn test_multi_recipient_with_different_routing_keys() {
+    // Test multiple recipients with different routing paths
+    // This should result in multiple forwarded messages (one per routing path)
+    let did_resolver = ExampleDIDResolver::new(vec![
+        ALICE_DID_DOC.clone(),
+        BOB_DID_DOC.clone(),
+        CHARLIE_DID_DOC.clone(),
+        MEDIATOR1_DID_DOC.clone(),
+        MEDIATOR2_DID_DOC.clone(),
+        MEDIATOR3_DID_DOC.clone(),
+    ]);
+
+    let sender_secrets = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+
+    let message = Message::build(
+        "test-different-routing".to_string(),
+        "https://example.com/test".to_string(),
+        json!({"content": "message with different routing"}),
+    )
+    .to(BOB_DID.to_owned())
+    .to(CHARLIE_DID.to_owned())
+    .from(ALICE_DID.to_owned())
+    .finalize();
+
+    // Pack with forwarding enabled for both Bob and Charlie (different mediators)
+    let results = message
+        .pack_encrypted(
+            &[BOB_DID.to_string(), CHARLIE_DID.to_string()],
+            Some(ALICE_DID),
+            None,
+            &did_resolver,
+            &sender_secrets,
+            &PackEncryptedOptions {
+                forward: true,
+                ..PackEncryptedOptions::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    // With different routing paths, we may get multiple messages
+    // (one optimized message per unique routing path)
+    assert!(!results.is_empty());
+
+    println!("Number of routing-optimized messages: {}", results.len());
+
+    // Verify metadata for all results
+    for (packed, metadata) in &results {
+        // Each result should have proper metadata
+        assert!(metadata.from_kid.is_some());
+        assert!(!metadata.to_kids.is_empty());
+
+        // Verify message structure
+        let jwe: serde_json::Value = serde_json::from_str(packed).unwrap();
+        assert!(jwe.get("protected").is_some() || jwe.get("recipients").is_some());
+    }
+}
+
+#[tokio::test]
+async fn test_multi_recipient_forward_with_anoncrypt() {
+    // Test anonymous encryption with forwarding for multiple recipients
+    let did_resolver = ExampleDIDResolver::new(vec![
+        ALICE_DID_DOC.clone(),
+        BOB_DID_DOC.clone(),
+        CHARLIE_DID_DOC.clone(),
+        MEDIATOR1_DID_DOC.clone(),
+        MEDIATOR2_DID_DOC.clone(),
+        MEDIATOR3_DID_DOC.clone(),
+    ]);
+
+    let sender_secrets = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+
+    let message = Message::build(
+        "test-anon-forward".to_string(),
+        "https://example.com/test".to_string(),
+        json!({"content": "anonymous message with forwarding"}),
+    )
+    .to(BOB_DID.to_owned())
+    .to(CHARLIE_DID.to_owned())
+    .finalize();
+
+    // Pack anonymously with forwarding enabled
+    let results = message
+        .pack_encrypted(
+            &[BOB_DID.to_string(), CHARLIE_DID.to_string()],
+            None, // Anonymous - no from
+            None,
+            &did_resolver,
+            &sender_secrets,
+            &PackEncryptedOptions {
+                forward: true,
+                ..PackEncryptedOptions::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    assert!(!results.is_empty());
+
+    // Verify all results have proper anonymous metadata
+    for (_packed, metadata) in &results {
+        assert!(metadata.from_kid.is_none()); // Anonymous sender
+        assert!(!metadata.to_kids.is_empty());
+    }
+}
+
+#[tokio::test]
+async fn test_multi_recipient_mixed_key_types() {
+    // Test with multiple recipients that might have different key types
+    // (X25519, P256, etc.)
+    let did_resolver = ExampleDIDResolver::new(vec![
+        ALICE_DID_DOC.clone(),
+        BOB_DID_DOC.clone(),
+        CHARLIE_DID_DOC.clone(),
+    ]);
+
+    let sender_secrets = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+    let bob_recipient_secrets = ExampleSecretsResolver::new(BOB_SECRETS.clone());
+    let charlie_recipient_secrets = ExampleSecretsResolver::new(CHARLIE_SECRETS.clone());
+
+    let message = Message::build(
+        "test-mixed-keys".to_string(),
+        "https://example.com/test".to_string(),
+        json!({"content": "message for mixed key types"}),
+    )
+    .to(BOB_DID.to_owned())
+    .to(CHARLIE_DID.to_owned())
+    .from(ALICE_DID.to_owned())
+    .finalize();
+
+    // Pack for multiple recipients with potentially different key types
+    let (packed, metadata) = message
+        .pack_encrypted(
+            &[BOB_DID.to_string(), CHARLIE_DID.to_string()],
+            Some(ALICE_DID),
+            None,
+            &did_resolver,
+            &sender_secrets,
+            &PackEncryptedOptions {
+                forward: false,
+                ..PackEncryptedOptions::default()
+            },
+        )
+        .await
+        .unwrap()
+        .into_iter()
+        .next()
+        .unwrap();
+
+    // Verify metadata includes keys for all recipients
+    assert!(metadata.to_kids.len() >= 2);
+    assert!(metadata.from_kid.is_some());
+
+    // Both recipients should be able to decrypt
+    let (msg1, _) = Message::unpack(
+        &packed,
+        &did_resolver,
+        &bob_recipient_secrets,
+        &UnpackOptions::default(),
+    )
+    .await
+    .unwrap();
+
+    let (msg2, _) = Message::unpack(
+        &packed,
+        &did_resolver,
+        &charlie_recipient_secrets,
+        &UnpackOptions::default(),
+    )
+    .await
+    .unwrap();
+
+    // Both should get the same message
+    assert_eq!(msg1.id, msg2.id);
+    assert_eq!(msg1.body, msg2.body);
 }

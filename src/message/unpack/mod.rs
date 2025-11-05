@@ -660,7 +660,10 @@ mod test {
                     &PackEncryptedOptions::default(),
                 )
                 .await
-                .expect("Unable encrypt");
+                .expect("Unable encrypt")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 pack_metadata.messaging_service.as_ref(),
@@ -785,7 +788,10 @@ mod test {
                     &PackEncryptedOptions::default(),
                 )
                 .await
-                .expect("Unable encrypt");
+                .expect("Unable encrypt")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 pack_metadata.messaging_service.as_ref(),
@@ -1033,7 +1039,10 @@ mod test {
                     },
                 )
                 .await
-                .expect("Unable pack_encrypted");
+                .expect("Unable pack_encrypted")
+                .into_iter()
+                .next()
+                .unwrap();
 
             _verify_unpack(
                 &packed,
@@ -1168,7 +1177,10 @@ mod test {
                     },
                 )
                 .await
-                .expect("Unable pack_encrypted");
+                .expect("Unable pack_encrypted")
+                .into_iter()
+                .next()
+                .unwrap();
 
             _verify_unpack_undeterministic(
                 &packed,
@@ -1360,7 +1372,10 @@ mod test {
                     },
                 )
                 .await
-                .expect("Unable pack_encrypted");
+                .expect("Unable pack_encrypted")
+                .into_iter()
+                .next()
+                .unwrap();
 
             _verify_unpack(
                 &packed,
@@ -1538,7 +1553,10 @@ mod test {
                     },
                 )
                 .await
-                .expect("Unable pack_encrypted");
+                .expect("Unable pack_encrypted")
+                .into_iter()
+                .next()
+                .unwrap();
 
             _verify_unpack(
                 &packed,
@@ -1651,7 +1669,10 @@ mod test {
                     },
                 )
                 .await
-                .expect("Unable pack_encrypted");
+                .expect("Unable pack_encrypted")
+                .into_iter()
+                .next()
+                .unwrap();
 
             _verify_unpack_undeterministic(
                 &packed,
@@ -1768,7 +1789,10 @@ mod test {
                     },
                 )
                 .await
-                .expect("encrypt is ok.");
+                .expect("encrypt is ok.")
+                .into_iter()
+                .next()
+                .unwrap();
 
             _verify_unpack_undeterministic(
                 &packed,

@@ -63,7 +63,10 @@ async fn non_repudiable_encryption() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Unable pack_encrypted");
+        .expect("Unable pack_encrypted")
+        .into_iter()
+        .next()
+        .unwrap();
 
     println!("Encryption metadata is\n{:?}\n", metadata);
 
@@ -155,7 +158,10 @@ async fn multi_recipient() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Unable pack_encrypted");
+        .expect("Unable pack_encrypted")
+        .into_iter()
+        .next()
+        .unwrap();
 
     println!("Packed Message: {}", msg_bob);
     println!("Pack Metadata: {:?}", metadata_bob);
@@ -176,7 +182,10 @@ async fn multi_recipient() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Unable pack_encrypted");
+        .expect("Unable pack_encrypted")
+        .into_iter()
+        .next()
+        .unwrap();
 
     // --- Sending message by Alice to Charlie ---
     println!("Alice is sending message to Charlie \n{}\n", msg_charlie);
@@ -401,7 +410,10 @@ async fn repudiable_authenticated_encryption() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Unable pack_encrypted");
+        .expect("Unable pack_encrypted")
+        .into_iter()
+        .next()
+        .unwrap();
 
     println!("Encryption metadata is\n{:?}\n", metadata);
 
@@ -490,7 +502,10 @@ async fn repudiable_non_authenticated_encryption() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Unable pack_encrypted");
+        .expect("Unable pack_encrypted")
+        .into_iter()
+        .next()
+        .unwrap();
 
     println!("Encryption metadata is\n{:?}\n", metadata);
 

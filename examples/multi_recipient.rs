@@ -71,7 +71,10 @@ async fn multi_recipient_encryption() {
             },
         )
         .await
-        .expect("Failed to pack encrypted message");
+        .expect("Failed to pack encrypted message")
+        .into_iter()
+        .next()
+        .unwrap();
 
     println!("✅ Message encrypted successfully!");
     println!("   Metadata:");

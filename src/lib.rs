@@ -207,7 +207,10 @@ mod tests {
                 &PackEncryptedOptions::default(),
             )
             .await
-            .expect("pack is ok.");
+            .expect("pack is ok.")
+            .into_iter()
+            .next()
+            .unwrap();
 
         // --- Send message using service endpoint ---
 

@@ -48,7 +48,10 @@ async fn main() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Unable pack_encrypted");
+        .expect("Unable pack_encrypted")
+        .into_iter()
+        .next()
+        .unwrap();
 
     println!("Packed Message: {}", msg);
     println!("Pack Metadata: {:?}", metadata);

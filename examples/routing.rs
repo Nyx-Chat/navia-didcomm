@@ -67,7 +67,10 @@ async fn single_mediator() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Unable pack_encrypted");
+        .expect("Unable pack_encrypted")
+        .into_iter()
+        .next()
+        .unwrap();
 
     println!("Encryption metadata is\n{:?}\n", metadata);
 
@@ -158,7 +161,10 @@ async fn multiple_mediators_with_alternative_endpoints() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Unable pack_encrypted");
+        .expect("Unable pack_encrypted")
+        .into_iter()
+        .next()
+        .unwrap();
 
     println!("Encryption metadata is\n{:?}\n", metadata);
 
@@ -318,7 +324,10 @@ async fn re_wrapping_for_final_recipient() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Unable pack_encrypted");
+        .expect("Unable pack_encrypted")
+        .into_iter()
+        .next()
+        .unwrap();
 
     println!("Encryption metadata is\n{:?}\n", metadata);
 
@@ -426,7 +435,10 @@ async fn re_wrapping_for_mediator_unknown_to_sender() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Unable pack_encrypted");
+        .expect("Unable pack_encrypted")
+        .into_iter()
+        .next()
+        .unwrap();
 
     println!("Encryption metadata is\n{:?}\n", metadata);
 

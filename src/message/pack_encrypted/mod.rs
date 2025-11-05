@@ -64,7 +64,10 @@ impl Message {
     /// - `options` allow fine configuration of packing process and have implemented `Default`.
     ///
     /// # Returns
-    /// Tuple `(encrypted_message, metadata)`.
+    /// Vector of tuples `(encrypted_message, metadata)`.
+    /// - When forwarding is disabled or no routing is needed, returns a Vec with a single element.
+    /// - When multiple recipients have different routing paths, returns multiple messages
+    ///   (one per routing path) for optimal delivery.
     /// - `encrypted_message` A DIDComm encrypted message as a JSON string.
     /// - `metadata` additional metadata about this `pack` execution like used keys identifiers,
     ///   used messaging service.
@@ -86,7 +89,7 @@ impl Message {
         did_resolver: &'dr (dyn DIDResolver + 'dr),
         secrets_resolver: &'sr (dyn SecretsResolver + 'sr),
         options: &PackEncryptedOptions,
-    ) -> Result<(String, PackEncryptedMetadata)> {
+    ) -> Result<Vec<(String, PackEncryptedMetadata)>> {
         self._validate_pack_encrypted(to, from, sign_by)?;
 
         // Deduplicate recipients (if same DID appears multiple times, use only once)
@@ -114,7 +117,7 @@ impl Message {
             .await?;
 
         // Multi-recipient routing optimization
-        let (msg, messaging_service) = if options.forward {
+        let results = if options.forward {
             // Analyze routing paths for all recipients
             let routing_paths = analyze_routing_paths(
                 &unique_to,
@@ -138,45 +141,51 @@ impl Message {
                 )
                 .await?;
 
-                // For now, we return the first wrapped message
-                // In a full implementation, all wrapped_messages would need to be sent
-                // TODO: Consider changing API to return Vec<(String, PackEncryptedMetadata)>
-                //       or add a separate field for additional messages
-                if wrapped_messages.len() > 1 {
-                    // Log warning that multiple messages should be sent
-                    eprintln!(
-                        "Warning: {} messages generated for optimal routing, but only returning the first. \
-                        Consider sending all messages for complete delivery.",
-                        wrapped_messages.len()
-                    );
-                }
-
-                let first_msg = wrapped_messages.into_iter().next().unwrap();
-                (
-                    first_msg.message,
-                    Some(MessagingServiceMetadata {
-                        id: first_msg.service_id,
-                        service_endpoint: first_msg.service_endpoint,
-                    }),
-                )
+                // Return all wrapped messages with their metadata
+                wrapped_messages
+                    .into_iter()
+                    .map(|wrapped| {
+                        let metadata = PackEncryptedMetadata {
+                            messaging_service: Some(MessagingServiceMetadata {
+                                id: wrapped.service_id,
+                                service_endpoint: wrapped.service_endpoint,
+                            }),
+                            from_kid: from_kid.clone(),
+                            sign_by_kid: sign_by_kid.clone(),
+                            to_kids: to_kids.clone(),
+                            message_ids: vec![self.id.clone()],
+                        };
+                        (wrapped.message, metadata)
+                    })
+                    .collect()
             } else {
                 // No forwarding needed - direct delivery
-                (msg, None)
+                vec![(
+                    msg,
+                    PackEncryptedMetadata {
+                        messaging_service: None,
+                        from_kid,
+                        sign_by_kid,
+                        to_kids,
+                        message_ids: vec![self.id.clone()],
+                    },
+                )]
             }
         } else {
             // Forwarding disabled in options
-            (msg, None)
+            vec![(
+                msg,
+                PackEncryptedMetadata {
+                    messaging_service: None,
+                    from_kid,
+                    sign_by_kid,
+                    to_kids,
+                    message_ids: vec![self.id.clone()],
+                },
+            )]
         };
 
-        let metadata = PackEncryptedMetadata {
-            messaging_service,
-            from_kid,
-            sign_by_kid,
-            to_kids,
-            message_ids: vec![self.id.clone()],
-        };
-
-        Ok((msg, metadata))
+        Ok(results)
     }
 
     fn _validate_pack_encrypted(
@@ -586,7 +595,10 @@ mod tests {
                     },
                 )
                 .await
-                .expect("encrypt is ok.");
+                .expect("encrypt is ok.")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 metadata,
@@ -907,7 +919,10 @@ mod tests {
                     },
                 )
                 .await
-                .expect("encrypt is ok.");
+                .expect("encrypt is ok.")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 metadata,
@@ -1059,7 +1074,10 @@ mod tests {
                     },
                 )
                 .await
-                .expect("encrypt is ok.");
+                .expect("encrypt is ok.")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 metadata,
@@ -1190,7 +1208,10 @@ mod tests {
                     },
                 )
                 .await
-                .expect("encrypt is ok.");
+                .expect("encrypt is ok.")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 metadata,
@@ -1448,7 +1469,10 @@ mod tests {
                     },
                 )
                 .await
-                .expect("encrypt is ok.");
+                .expect("encrypt is ok.")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 metadata,
@@ -1616,7 +1640,10 @@ mod tests {
                     },
                 )
                 .await
-                .expect("encrypt is ok.");
+                .expect("encrypt is ok.")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 metadata,
@@ -1700,7 +1727,10 @@ mod tests {
                     &PackEncryptedOptions::default(),
                 )
                 .await
-                .expect("Unable encrypt");
+                .expect("Unable encrypt")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 pack_metadata.messaging_service.as_ref(),
@@ -1889,7 +1919,10 @@ mod tests {
                     },
                 )
                 .await
-                .expect("Unable encrypt");
+                .expect("Unable encrypt")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 pack_metadata.messaging_service.as_ref(),
@@ -2134,7 +2167,10 @@ mod tests {
                     },
                 )
                 .await
-                .expect("Unable encrypt");
+                .expect("Unable encrypt")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 pack_metadata.messaging_service.as_ref(),
@@ -2930,7 +2966,10 @@ mod tests {
                 },
             )
             .await
-            .expect("Unable pack_encrypted");
+            .expect("Unable pack_encrypted")
+            .into_iter()
+            .next()
+            .unwrap();
 
         let (unpacked_msg, unpack_metadata) = Message::unpack(
             &packed_msg,
