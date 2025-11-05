@@ -1,3 +1,44 @@
+## [Unreleased]
+
+### ✨ Features
+
+* **Multi-recipient encryption**: `pack_encrypted` now supports encrypting for multiple recipients in a single operation
+  - Single Content Encryption Key (CEK) shared across all recipients
+  - Automatic recipient deduplication
+  - Each recipient receives their own encrypted key in the JWE recipients array
+  - All recipients must have compatible key types
+
+* **Routing optimization**: Intelligent message routing minimizes network overhead
+  - Analyzes mediator chains to find common routing paths
+  - Groups recipients sharing mediators to reduce message count
+  - Example: 10 recipients through same 2 mediators = 1 message instead of 10
+  - Automatic detection of direct vs. mediated delivery
+
+* **API improvements**: Enhanced ergonomics and performance
+  - `pack_encrypted` accepts `&[&str]` for zero-copy recipient list
+  - Returns `Vec<(String, PackEncryptedMetadata)>` for optimal routing
+  - Internal API optimized to use string slices throughout the call chain
+  - Eliminates unnecessary String allocations in hot paths
+
+### 🔄 Breaking Changes
+
+* `pack_encrypted` signature changed:
+  - **Before**: `to: &str` → **After**: `to: &[&str]`
+  - **Before**: `Result<(String, PackEncryptedMetadata)>` → **After**: `Result<Vec<(String, PackEncryptedMetadata)>>`
+  - Migration: Single recipient `&bob_did` → `&[bob_did]`, extract first result with `.into_iter().next().unwrap()`
+
+### 📝 Documentation
+
+* Updated README.md with current API examples and multi-recipient usage
+* Updated docs/API.md with accurate function signatures and metadata types
+* Added comprehensive examples for single and multi-recipient scenarios
+
+### 🧪 Testing
+
+* Increased test coverage from 190 to 221 tests
+* Added multi-recipient test suite (9 tests)
+* Added routing optimization tests (11 tests)
+
 ## [1.2.0](https://github.com/Nyx-Chat/navia-didcomm/compare/v1.1.1...v1.2.0) (2025-10-06)
 
 ### ✨ Features

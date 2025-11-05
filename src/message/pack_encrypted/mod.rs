@@ -72,6 +72,19 @@ impl Message {
     /// - `metadata` additional metadata about this `pack` execution like used keys identifiers,
     ///   used messaging service.
     ///
+    /// # Multi-Recipient Optimization
+    /// When encrypting for multiple recipients, the library:
+    /// - Uses a single shared Content Encryption Key (CEK) for all recipients (per DIDComm v2 spec)
+    /// - Automatically deduplicates recipient DIDs if the same DID appears multiple times
+    /// - Analyzes mediator routing chains to minimize message count:
+    ///   - Recipients with identical routing paths share a single message
+    ///   - Recipients sharing common final mediators are grouped optimally
+    ///   - Example: 3 recipients through same 2 mediators = 1 message instead of 3 (66% reduction)
+    /// - Validates all recipients have compatible key types before encryption
+    ///
+    /// **Performance**: For N recipients, this performs N key encapsulations but only 1 content encryption,
+    /// significantly faster than encrypting N separate messages.
+    ///
     /// # Errors
     /// - `DIDNotResolved` Sender or recipient DID not found.
     /// - `DIDUrlNotFound` DID doesn't contain mentioned DID Urls (for ex., key id)
