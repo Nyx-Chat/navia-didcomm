@@ -301,15 +301,33 @@ pub struct Secret {
 
 ### Routing Protocol
 
+The library supports both standard DIDComm 2.0 routing and the routing-multi/1.0 extension for optimized multi-recipient routing.
+
 #### `try_parse_forward`
-Parse a message to check if it's a forward routing message.
+Parse a message to check if it's a standard DIDComm 2.0 forward routing message.
 
 ```rust
 pub fn try_parse_forward(msg: &Message) -> Option<ParsedForward<'_>>
 ```
 
+**Returns:** Parsed forward message containing the next destination and forwarded message attachment.
+
+#### `try_parse_forward_multi`
+Parse a message to check if it's a routing-multi/1.0 forward message with multiple destinations.
+
+```rust
+pub fn try_parse_forward_multi(msg: &Message) -> Option<ParsedForwardMulti<'_>>
+```
+
+**Returns:** Parsed routing-multi forward message containing array of NextDestination objects.
+
+**Features:**
+- Supports multiple next-hop destinations with separate attachments
+- Enables single message to route to multiple mediators
+- Used automatically when `pack_encrypted` detects optimization opportunities
+
 #### `wrap_in_forward`
-Wrap a message for routing through mediators.
+Wrap a message for routing through mediators (standard DIDComm 2.0 protocol).
 
 ```rust
 pub async fn wrap_in_forward(
@@ -320,6 +338,8 @@ pub async fn wrap_in_forward(
     secrets_resolver: &dyn SecretsResolver,
 ) -> Result<Message>
 ```
+
+**Note:** The library automatically uses routing-multi/1.0 optimization when beneficial.
 
 ## Error Handling
 
@@ -435,7 +455,11 @@ pub const DIDCOMM_SIGNED_MEDIA_TYPE: &str = "application/didcomm-signed+json";
 pub const DIDCOMM_PLAIN_MEDIA_TYPE: &str = "application/didcomm-plain+json";
 ```
 
-### Forward Message Type
+### Forward Message Types
 ```rust
+// Standard DIDComm 2.0 forward message
 pub const FORWARD_MSG_TYPE: &str = "https://didcomm.org/routing/2.0/forward";
+
+// Routing-mod/1.0 forward message with multiple destinations
+pub const FORWARD_MULTI_MSG_TYPE: &str = "https://didcomm.org/routing-multi/1.0/forward";
 ```

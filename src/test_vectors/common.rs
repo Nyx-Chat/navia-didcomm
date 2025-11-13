@@ -4,6 +4,9 @@ use serde_json::{Map, Value};
 pub const ALICE_DID: &str = "did:example:alice";
 pub const BOB_DID: &str = "did:example:bob";
 pub const CHARLIE_DID: &str = "did:example:charlie";
+pub const DAVID_DID: &str = "did:example:david";
+pub const EVE_DID: &str = "did:example:eve";
+pub const FRANK_DID: &str = "did:example:frank";
 
 pub fn update_field(msg: &str, field: &str, value: &str) -> String {
     let parsed: Value = serde_json::from_str(msg).unwrap();

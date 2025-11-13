@@ -8,11 +8,25 @@
   - Each recipient receives their own encrypted key in the JWE recipients array
   - All recipients must have compatible key types
 
+* **Routing-mod/1.0 protocol support**: Advanced routing optimization protocol
+  - Implements [routing-multi/1.0](https://identity.foundation/didcomm-messaging/spec/#routing-multi) extension
+  - Enables single message delivery to multiple next-hop mediators via attachments
+  - Recursive divergent path handling for complex multi-hop routing scenarios
+  - Automatic fallback to standard DIDComm 2.0 forward protocol when needed
+  - Example: David, Eve, Frank through shared mediators = 1 optimized message instead of 3
+
+* **Complex multi-hop routing**: Full support for 3+ hop mediator chains
+  - Recursive routing structure creation when paths diverge at any level
+  - Verified end-to-end delivery through complex mediator topologies
+  - Efficient message grouping when recipients share partial routing paths
+  - Example: Recipients with paths like `[med1, med2, med3]` and `[med1, med2, med4]` optimally routed
+
 * **Routing optimization**: Intelligent message routing minimizes network overhead
   - Analyzes mediator chains to find common routing paths
   - Groups recipients sharing mediators to reduce message count
   - Example: 10 recipients through same 2 mediators = 1 message instead of 10
   - Automatic detection of direct vs. mediated delivery
+  - Prefix-based and suffix-based routing optimizations
 
 * **API improvements**: Enhanced ergonomics and performance
   - `pack_encrypted` accepts `&[&str]` for zero-copy recipient list
@@ -27,17 +41,28 @@
   - **Before**: `Result<(String, PackEncryptedMetadata)>` → **After**: `Result<Vec<(String, PackEncryptedMetadata)>>`
   - Migration: Single recipient `&bob_did` → `&[bob_did]`, extract first result with `.into_iter().next().unwrap()`
 
+### 🐛 Bug Fixes
+
+* **Routing**: Fixed divergent path handling when recipients share initial mediators but then diverge
+  - Now correctly creates routing-multi messages at divergence points
+  - Properly encrypts for next hop mediator instead of first mediator in fallback code
+  - Forward messages now point to correct destination after mediator decrypts
+* **Code quality**: Removed unused `build_forward_message_multi` function
+* **Clippy**: Fixed `cloned_ref_to_slice_refs` warning by using `std::slice::from_ref`
+
 ### 📝 Documentation
 
-* Updated README.md with current API examples and multi-recipient usage
-* Updated docs/API.md with accurate function signatures and metadata types
+* Updated README.md with current API examples and routing-multi/1.0 protocol information
+* Updated docs/API.md with accurate function signatures, metadata types, and routing protocol details
 * Added comprehensive examples for single and multi-recipient scenarios
+* Added routing-multi protocol reference and constants
 
 ### 🧪 Testing
 
-* Increased test coverage from 190 to 221 tests
-* Added multi-recipient test suite (9 tests)
+* Increased test coverage from 190 to 223 tests
+* Added multi-recipient test suite (11 tests including complex 3-hop routing)
 * Added routing optimization tests (11 tests)
+* End-to-end verification of 3-hop routing with divergent paths
 
 ## [1.2.0](https://github.com/Nyx-Chat/navia-didcomm/compare/v1.1.1...v1.2.0) (2025-10-06)
 

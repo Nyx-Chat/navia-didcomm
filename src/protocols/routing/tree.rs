@@ -84,6 +84,9 @@ pub struct RouteGroup {
 
     /// Service ID for this group
     pub service_id: String,
+
+    /// Whether this group is based on common prefix (true) or suffix (false)
+    pub is_prefix_based: bool,
 }
 
 impl RouteGroup {
@@ -217,8 +220,35 @@ pub async fn analyze_routing_paths<'dr>(
     Ok(paths)
 }
 
+/// Finds the longest common prefix between two mediator chains.
+/// Returns the common prefix and the remaining suffixes for each chain.
+fn find_common_prefix(
+    path1: &[String],
+    path2: &[String],
+) -> (Vec<String>, Vec<String>, Vec<String>) {
+    let mut common = Vec::new();
+    let min_len = path1.len().min(path2.len());
+
+    // Work forwards from the start
+    for i in 0..min_len {
+        if path1[i] == path2[i] {
+            common.push(path1[i].clone());
+        } else {
+            break;
+        }
+    }
+
+    let suffix1 = path1[common.len()..].to_vec();
+    let suffix2 = path2[common.len()..].to_vec();
+
+    (common, suffix1, suffix2)
+}
+
 /// Finds the longest common suffix between two mediator chains.
 /// Returns the common suffix and the remaining prefixes for each chain.
+///
+/// Note: Currently unused in favor of prefix-based grouping, but kept for future use.
+#[allow(dead_code)]
 fn find_common_suffix(
     path1: &[String],
     path2: &[String],
@@ -247,7 +277,8 @@ fn find_common_suffix(
     (common, prefix1, prefix2)
 }
 
-/// Groups routing paths by their common suffixes to enable optimization.
+/// Groups routing paths by their common prefixes or suffixes to enable optimization.
+/// Tries prefix-based grouping first (for shared first hops), then falls back to suffix-based.
 pub fn group_by_common_routes(paths: Vec<RoutingPath>) -> RoutingTree {
     let mut tree = RoutingTree::new();
 
@@ -261,47 +292,50 @@ pub fn group_by_common_routes(paths: Vec<RoutingPath>) -> RoutingTree {
         return tree;
     }
 
-    // Group routed recipients by finding common suffixes
+    // First pass: try to group by common prefix (shared first hops)
+    // This enables optimization like David and Eve scenario where they share mediator1
     while !routed.is_empty() {
         let first = routed.remove(0);
         let mut group_recipients = vec![first.recipient_did.clone()];
         let mut individual_paths = HashMap::new();
-        let mut common_suffix = first.mediators.clone();
+        let mut common_prefix = first.mediators.clone();
         let service_endpoint = first.service_endpoint.clone();
         let service_id = first.service_id.clone();
 
-        // Initially, first recipient has no prefix (all of its path is "common")
+        // Initially, first recipient has no suffix (all of its path is "common prefix")
         individual_paths.insert(first.recipient_did.clone(), Vec::new());
 
-        // Find others with compatible routes
+        // Find others with compatible routes (common prefix)
         let mut i = 0;
         while i < routed.len() {
-            let (new_common, prefix1, prefix2) =
-                find_common_suffix(&common_suffix, &routed[i].mediators);
+            let (new_common, suffix1, suffix2) =
+                find_common_prefix(&common_prefix, &routed[i].mediators);
 
-            // Only group if they share at least one mediator
+            // Only group if they share at least one mediator at the start
             if !new_common.is_empty() {
-                // Update the common suffix
-                common_suffix = new_common;
+                // Update the common prefix
+                common_prefix = new_common;
 
-                // Update all existing recipients' prefixes by extending them with prefix1
-                // (the part that was removed from common_suffix)
-                if !prefix1.is_empty() {
+                // Update all existing recipients' suffixes by prepending suffix1
+                // (the part that was removed from common_prefix)
+                // suffix1 must come BEFORE the current suffix because it represents
+                // the earlier part of the routing path
+                if !suffix1.is_empty() {
                     for recipient_did in &group_recipients {
-                        let current_prefix = individual_paths
+                        let current_suffix = individual_paths
                             .get(recipient_did)
                             .cloned()
                             .unwrap_or_default();
-                        let mut extended_prefix = current_prefix;
-                        extended_prefix.extend_from_slice(&prefix1);
-                        individual_paths.insert(recipient_did.clone(), extended_prefix);
+                        let mut extended_suffix = suffix1.clone();
+                        extended_suffix.extend_from_slice(&current_suffix);
+                        individual_paths.insert(recipient_did.clone(), extended_suffix);
                     }
                 }
 
                 // Add this recipient to the group
                 let recipient = routed.remove(i);
                 group_recipients.push(recipient.recipient_did.clone());
-                individual_paths.insert(recipient.recipient_did, prefix2);
+                individual_paths.insert(recipient.recipient_did, suffix2);
             } else {
                 i += 1;
             }
@@ -309,10 +343,11 @@ pub fn group_by_common_routes(paths: Vec<RoutingPath>) -> RoutingTree {
 
         tree.routed_groups.push(RouteGroup {
             recipients: group_recipients,
-            common_suffix,
+            common_suffix: common_prefix, // Re-use field name for common path (prefix or suffix)
             individual_paths,
             service_endpoint,
             service_id,
+            is_prefix_based: true, // New algorithm uses prefix-based grouping
         });
     }
 

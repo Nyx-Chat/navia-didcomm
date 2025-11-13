@@ -61,6 +61,7 @@ async fn main() {
                 messaging_service: Some("did:example:bob#didcomm-1".to_string()),
                 enc_alg_auth: AuthCryptAlg::A256cbcHs512Ecdh1puA256kw,
                 enc_alg_anon: AnonCryptAlg::A256gcmEcdhEsA256kw,
+                use_routing_multi: true,
             },
         )
         .await

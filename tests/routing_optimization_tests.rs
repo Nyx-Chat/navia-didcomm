@@ -130,23 +130,32 @@ fn test_group_by_common_routes_with_common_suffix() {
     let tree = group_by_common_routes(paths);
 
     assert_eq!(tree.direct_recipients.len(), 0);
-    assert_eq!(tree.routed_groups.len(), 1);
+    // Alice and Bob have different service endpoints, so they're in separate groups
+    assert_eq!(tree.routed_groups.len(), 2);
 
-    let group = &tree.routed_groups[0];
-    assert_eq!(group.recipients.len(), 2);
-    assert_eq!(group.common_suffix, vec!["did:example:med2"]);
-    assert!(!group.has_identical_routes());
+    // Each recipient should be in their own group
+    assert!(tree.routed_groups.iter().all(|g| g.recipients.len() == 1));
 
-    // Check individual paths
-    let alice_path = group.individual_paths.get("did:example:alice").unwrap();
-    let bob_path = group.individual_paths.get("did:example:bob").unwrap();
+    // Find Alice's group
+    let alice_group = tree
+        .routed_groups
+        .iter()
+        .find(|g| g.recipients.contains(&"did:example:alice".to_string()))
+        .unwrap();
+    assert_eq!(
+        alice_group.common_suffix,
+        vec!["did:example:med1", "did:example:med2"]
+    );
 
-    // One should have med1, other should have med3 as their unique prefix
-    assert!(
-        (alice_path == &vec!["did:example:med1".to_string()]
-            && bob_path == &vec!["did:example:med3".to_string()])
-            || (alice_path == &vec!["did:example:med3".to_string()]
-                && bob_path == &vec!["did:example:med1".to_string()])
+    // Find Bob's group
+    let bob_group = tree
+        .routed_groups
+        .iter()
+        .find(|g| g.recipients.contains(&"did:example:bob".to_string()))
+        .unwrap();
+    assert_eq!(
+        bob_group.common_suffix,
+        vec!["did:example:med3", "did:example:med2"]
     );
 }
 
@@ -265,6 +274,7 @@ fn test_route_group_total_depth() {
         individual_paths,
         service_endpoint: "https://med.example".to_string(),
         service_id: "service-1".to_string(),
+        is_prefix_based: false,
     };
 
     // Total depth = 1 (common) + 1 (max individual) = 2
@@ -313,22 +323,34 @@ fn test_complex_routing_scenario() {
     // All recipients need routing
     assert_eq!(tree.direct_recipients.len(), 0);
 
-    // Should create one group with all three recipients sharing med2 as common suffix
-    assert_eq!(tree.routed_groups.len(), 1);
+    // With prefix-based optimization: R2 and R3 (identical paths) in one group, R1 separate
+    // This is more optimal than grouping all three together
+    assert_eq!(tree.routed_groups.len(), 2);
 
-    let group = &tree.routed_groups[0];
-    assert_eq!(group.recipients.len(), 3);
-    assert_eq!(group.common_suffix, vec!["did:example:med2"]);
+    // Find the group with R2 and R3 (they have identical paths: med3 -> med2)
+    let r2_r3_group = tree
+        .routed_groups
+        .iter()
+        .find(|g| g.recipients.contains(&"did:example:r2".to_string()))
+        .unwrap();
+    assert_eq!(r2_r3_group.recipients.len(), 2);
+    assert!(r2_r3_group.has_identical_routes());
+    assert_eq!(
+        r2_r3_group.common_suffix,
+        vec!["did:example:med3", "did:example:med2"]
+    );
 
-    // R2 and R3 should have the same individual path (med3)
-    // R1 should have different path (med1)
-    let r1_path = group.individual_paths.get("did:example:r1").unwrap();
-    let r2_path = group.individual_paths.get("did:example:r2").unwrap();
-    let r3_path = group.individual_paths.get("did:example:r3").unwrap();
-
-    assert_eq!(r1_path, &vec!["did:example:med1".to_string()]);
-    assert_eq!(r2_path, &vec!["did:example:med3".to_string()]);
-    assert_eq!(r3_path, &vec!["did:example:med3".to_string()]);
+    // Find the group with R1 (separate path: med1 -> med2)
+    let r1_group = tree
+        .routed_groups
+        .iter()
+        .find(|g| g.recipients.contains(&"did:example:r1".to_string()))
+        .unwrap();
+    assert_eq!(r1_group.recipients.len(), 1);
+    assert_eq!(
+        r1_group.common_suffix,
+        vec!["did:example:med1", "did:example:med2"]
+    );
 }
 
 #[test]
@@ -372,38 +394,42 @@ fn test_three_hop_routing_with_shrinking_common() {
 
     let tree = group_by_common_routes(paths);
 
-    // All recipients should be grouped
+    // All recipients need routing
     assert_eq!(tree.direct_recipients.len(), 0);
-    assert_eq!(tree.routed_groups.len(), 1);
+    // Recipients have different service endpoints, so they're in separate groups
+    assert_eq!(tree.routed_groups.len(), 3);
 
-    let group = &tree.routed_groups[0];
-    assert_eq!(group.recipients.len(), 3);
-    assert_eq!(group.common_suffix, vec!["did:example:med3"]);
+    // Each recipient should be in their own group
+    assert!(tree.routed_groups.iter().all(|g| g.recipients.len() == 1));
 
-    // Verify individual paths - this is the critical test for the bug fix
-    let r1_path = group.individual_paths.get("did:example:r1").unwrap();
-    let r2_path = group.individual_paths.get("did:example:r2").unwrap();
-    let r3_path = group.individual_paths.get("did:example:r3").unwrap();
-
+    // Verify individual routing paths for each group
+    let r1_group = tree
+        .routed_groups
+        .iter()
+        .find(|g| g.recipients.contains(&"did:example:r1".to_string()))
+        .unwrap();
     assert_eq!(
-        r1_path,
-        &vec![
-            "did:example:med1".to_string(),
-            "did:example:med2".to_string()
-        ],
-        "R1 should have full prefix [med1, med2], not just [med2]"
+        r1_group.common_suffix,
+        vec!["did:example:med1", "did:example:med2", "did:example:med3"]
     );
+
+    let r2_group = tree
+        .routed_groups
+        .iter()
+        .find(|g| g.recipients.contains(&"did:example:r2".to_string()))
+        .unwrap();
     assert_eq!(
-        r2_path,
-        &vec![
-            "did:example:med4".to_string(),
-            "did:example:med2".to_string()
-        ],
-        "R2 should have full prefix [med4, med2], not just [med2]"
+        r2_group.common_suffix,
+        vec!["did:example:med4", "did:example:med2", "did:example:med3"]
     );
+
+    let r3_group = tree
+        .routed_groups
+        .iter()
+        .find(|g| g.recipients.contains(&"did:example:r3".to_string()))
+        .unwrap();
     assert_eq!(
-        r3_path,
-        &vec!["did:example:med5".to_string()],
-        "R3 should have prefix [med5]"
+        r3_group.common_suffix,
+        vec!["did:example:med5", "did:example:med3"]
     );
 }

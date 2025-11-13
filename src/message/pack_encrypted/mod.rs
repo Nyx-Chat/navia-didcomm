@@ -148,6 +148,7 @@ impl Message {
                     options.forward_headers.as_ref(),
                     &options.enc_alg_anon,
                     &caching_resolver,
+                    options.use_routing_multi,
                 )
                 .await?;
 
@@ -332,6 +333,12 @@ pub struct PackEncryptedOptions {
     /// If forward is disabled this property will be ignored.
     pub forward_headers: Option<HashMap<String, Value>>,
 
+    /// Whether to use routing-multi protocol for optimized multi-recipient forwarding.
+    /// If `true`, uses the routing-multi/1.0 protocol which allows multiple attachments
+    /// and more efficient routing. If `false`, falls back to standard DIDComm 2.0 routing.
+    #[serde(default = "crate::utils::serde::_true")]
+    pub use_routing_multi: bool,
+
     /// Identifier (DID URL) of messaging service (https://identity.foundation/didcomm-messaging/spec/#did-document-service-endpoint).
     /// If DID doc contains multiple messaging services it allows specify what service to use.
     /// If not present first service will be used.
@@ -352,6 +359,7 @@ impl Default for PackEncryptedOptions {
             protect_sender: false,
             forward: true,
             forward_headers: None,
+            use_routing_multi: true,
             messaging_service: None,
             enc_alg_auth: AuthCryptAlg::default(),
             enc_alg_anon: AnonCryptAlg::default(),
@@ -365,6 +373,7 @@ impl PackEncryptedOptions {
             protect_sender: false,
             forward: false,
             forward_headers: None,
+            use_routing_multi: true,
             messaging_service: None,
             enc_alg_auth: AuthCryptAlg::default(),
             enc_alg_anon: AnonCryptAlg::default(),

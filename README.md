@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/License-Proprietary-red.svg)](./LICENSE)
 [![GitHub Package Registry](https://img.shields.io/badge/GitHub%20Packages-private-blue.svg)](https://github.com/nyx-chat/navia-didcomm/packages)
 [![Build Status](https://github.com/nyx-chat/navia-didcomm/workflows/PR%20Validation/badge.svg)](https://github.com/nyx-chat/navia-didcomm/actions)
-[![Tests](https://img.shields.io/badge/tests-221%20passing-green.svg)](https://github.com/nyx-chat/navia-didcomm/actions)
+[![Tests](https://img.shields.io/badge/tests-223%20passing-green.svg)](https://github.com/nyx-chat/navia-didcomm/actions)
 
 **Production-ready DIDComm v2 implementation for secure peer-to-peer messaging**
 
@@ -16,7 +16,7 @@ Navia-DIDComm is a complete, modern implementation of the [DIDComm v2 specificat
 - 🔐 **Modern Cryptography** - X25519, P-256, P-384 ✅, P-521, Ed25519, Secp256k1
 - 📨 **Secure Messaging** - Encrypted (anoncrypt/authcrypt) and signed messages
 - 👥 **Multi-Recipient Support** - Efficient encryption for multiple recipients with shared CEK
-- 🔄 **Message Routing** - Forward protocol, mediation support, and routing optimization
+- 🔄 **Message Routing** - Forward protocol (DIDComm 2.0 + routing-multi/1.0), mediation support, and intelligent routing optimization with support for complex multi-hop paths
 - 🔑 **DID Rotation** - Full `fromPrior` field support
 - ⚡ **High Performance** - Optimized for speed and low memory usage
 
