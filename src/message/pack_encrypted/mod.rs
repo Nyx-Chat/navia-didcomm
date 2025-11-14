@@ -10,7 +10,10 @@ use crate::{
     algorithms::{AnonCryptAlg, AuthCryptAlg},
     did::{CachingDIDResolver, DIDResolver},
     error::{err_msg, ErrorKind, Result, ResultContext},
-    protocols::routing::wrap_in_forward_if_needed,
+    protocols::routing::{
+        tree::{analyze_routing_paths, group_by_common_routes},
+        wrap::wrap_with_routing_tree,
+    },
     secrets::SecretsResolver,
     utils::did::{did_or_url, is_did},
     Message, PackSignedMetadata,
@@ -46,7 +49,8 @@ impl Message {
     /// It's possible to add non-repudiation by providing `sign_by` parameter.
     ///
     /// # Params
-    /// - `to` recipient DID or key ID the sender uses encryption.
+    /// - `to` slice of recipient DIDs or key IDs for encryption. All recipients will share the same encrypted content
+    ///   but each will receive their own encrypted key. All recipients must have compatible key types.
     /// - `from` a sender DID or key ID. If set message will be repudiable authenticated or anonymous otherwise.
     ///   Must match `from` header in Plaintext if the header is set.
     /// - `sign_by` if `Some` message will be additionally signed to provide additional non-repudiable authentication
@@ -60,10 +64,26 @@ impl Message {
     /// - `options` allow fine configuration of packing process and have implemented `Default`.
     ///
     /// # Returns
-    /// Tuple `(encrypted_message, metadata)`.
+    /// Vector of tuples `(encrypted_message, metadata)`.
+    /// - When forwarding is disabled or no routing is needed, returns a Vec with a single element.
+    /// - When multiple recipients have different routing paths, returns multiple messages
+    ///   (one per routing path) for optimal delivery.
     /// - `encrypted_message` A DIDComm encrypted message as a JSON string.
     /// - `metadata` additional metadata about this `pack` execution like used keys identifiers,
     ///   used messaging service.
+    ///
+    /// # Multi-Recipient Optimization
+    /// When encrypting for multiple recipients, the library:
+    /// - Uses a single shared Content Encryption Key (CEK) for all recipients (per DIDComm v2 spec)
+    /// - Automatically deduplicates recipient DIDs if the same DID appears multiple times
+    /// - Analyzes mediator routing chains to minimize message count:
+    ///   - Recipients with identical routing paths share a single message
+    ///   - Recipients sharing common final mediators are grouped optimally
+    ///   - Example: 3 recipients through same 2 mediators = 1 message instead of 3 (66% reduction)
+    /// - Validates all recipients have compatible key types before encryption
+    ///
+    /// **Performance**: For N recipients, this performs N key encapsulations but only 1 content encryption,
+    /// significantly faster than encrypting N separate messages.
     ///
     /// # Errors
     /// - `DIDNotResolved` Sender or recipient DID not found.
@@ -76,96 +96,147 @@ impl Message {
     /// TODO: verify and update errors list
     pub async fn pack_encrypted<'dr, 'sr>(
         &self,
-        to: &str,
+        to: &[&str],
         from: Option<&str>,
         sign_by: Option<&str>,
         did_resolver: &'dr (dyn DIDResolver + 'dr),
         secrets_resolver: &'sr (dyn SecretsResolver + 'sr),
         options: &PackEncryptedOptions,
-    ) -> Result<(String, PackEncryptedMetadata)> {
+    ) -> Result<Vec<(String, PackEncryptedMetadata)>> {
         self._validate_pack_encrypted(to, from, sign_by)?;
+
+        // Deduplicate recipients (if same DID appears multiple times, use only once)
+        let unique_to: Vec<&str> = {
+            let mut seen = std::collections::HashSet::new();
+            to.iter().filter(|did| seen.insert(*did)).copied().collect()
+        };
 
         // Use caching resolver to avoid duplicate DID resolutions
         let caching_resolver = CachingDIDResolver::new(did_resolver);
 
-        // TODO:
-        // 1. Extract JWE-related steps to a separate method, so that pack_encrypted uses
-        // the extarcted method for JWE steps and wrap_in_forward_if_needed for Routing steps.
-        // 2. Make anoncrypt/authcrypt separate non-public modules (not sub-modules), so that
-        // both pack_encrypted and Routing implementation use them (to avoid cross dependencies
-        // between message::pack_encrypted and protocols::routing modules).
-
-        let (msg, sign_by_kid) = if let Some(sign_by) = sign_by {
-            let (msg, PackSignedMetadata { sign_by_kid }) = self
-                .pack_signed(sign_by, &caching_resolver, secrets_resolver)
-                .await
-                .context("Unable produce sign envelope")?;
-
-            (msg, Some(sign_by_kid))
-        } else {
-            let msg = self
-                .pack_plaintext(&caching_resolver)
-                .await
-                .context("Unable produce plaintext")?;
-            (msg, None)
-        };
-
-        let (msg, from_kid, to_kids) = if let Some(from) = from {
-            let (msg, from_kid, to_kids) = authcrypt(
-                to,
+        // Extract JWE-related steps to a separate method for better modularity
+        let (msg, from_kid, to_kids, sign_by_kid) = self
+            ._pack_jwe_envelope(
+                &unique_to,
                 from,
+                sign_by,
                 &caching_resolver,
                 secrets_resolver,
-                msg.as_bytes(),
-                &options.enc_alg_auth,
-                &options.enc_alg_anon,
-                options.protect_sender,
+                options,
             )
             .await?;
 
-            (msg, Some(from_kid), to_kids)
+        // Multi-recipient routing optimization
+        let results = if options.forward {
+            // Analyze routing paths for all recipients
+            let routing_paths = analyze_routing_paths(
+                &unique_to,
+                options.messaging_service.as_deref(),
+                &caching_resolver,
+            )
+            .await?;
+
+            // Group by common routes for optimization
+            let routing_tree = group_by_common_routes(routing_paths);
+
+            // Check if forwarding is needed
+            if routing_tree.needs_forwarding() {
+                // Wrap messages using the optimized routing tree
+                let wrapped_messages = wrap_with_routing_tree(
+                    &msg,
+                    &routing_tree,
+                    options.forward_headers.as_ref(),
+                    &options.enc_alg_anon,
+                    &caching_resolver,
+                    options.use_routing_multi,
+                )
+                .await?;
+
+                // Return all wrapped messages with their metadata
+                wrapped_messages
+                    .into_iter()
+                    .map(|wrapped| {
+                        let metadata = PackEncryptedMetadata {
+                            messaging_service: Some(MessagingServiceMetadata {
+                                id: wrapped.service_id,
+                                service_endpoint: wrapped.service_endpoint,
+                            }),
+                            from_kid: from_kid.clone(),
+                            sign_by_kid: sign_by_kid.clone(),
+                            to_kids: to_kids.clone(),
+                            message_ids: vec![self.id.clone()],
+                        };
+                        (wrapped.message, metadata)
+                    })
+                    .collect()
+            } else {
+                // No forwarding needed - direct delivery
+                vec![(
+                    msg,
+                    PackEncryptedMetadata {
+                        messaging_service: None,
+                        from_kid,
+                        sign_by_kid,
+                        to_kids,
+                        message_ids: vec![self.id.clone()],
+                    },
+                )]
+            }
         } else {
-            let (msg, to_kids) =
-                anoncrypt(to, &caching_resolver, msg.as_bytes(), &options.enc_alg_anon).await?;
-
-            (msg, None, to_kids)
+            // Forwarding disabled in options
+            vec![(
+                msg,
+                PackEncryptedMetadata {
+                    messaging_service: None,
+                    from_kid,
+                    sign_by_kid,
+                    to_kids,
+                    message_ids: vec![self.id.clone()],
+                },
+            )]
         };
 
-        let (msg, messaging_service, mut message_ids) =
-            match wrap_in_forward_if_needed(&msg, to, &caching_resolver, options).await? {
-                Some((forward_msg, messaging_service, fwd_ids)) => {
-                    (forward_msg, Some(messaging_service), fwd_ids)
-                }
-                None => (msg, None, Vec::new()),
-            };
-
-        // Add the original message ID at the beginning
-        message_ids.insert(0, self.id.clone());
-
-        let metadata = PackEncryptedMetadata {
-            messaging_service,
-            from_kid,
-            sign_by_kid,
-            to_kids,
-            message_ids,
-        };
-
-        Ok((msg, metadata))
+        Ok(results)
     }
 
     fn _validate_pack_encrypted(
         &self,
-        to: &str,
+        to: &[&str],
         from: Option<&str>,
         sign_by: Option<&str>,
     ) -> Result<()> {
-        if !is_did(to) {
+        // Validate that we have at least one recipient
+        if to.is_empty() {
             Err(err_msg(
                 ErrorKind::IllegalArgument,
-                "`to` value is not a valid DID or DID URL",
+                "`to` array must contain at least one recipient",
             ))?;
         }
 
+        // Validate all recipient DIDs
+        for recipient in to {
+            if !is_did(recipient) {
+                Err(err_msg(
+                    ErrorKind::IllegalArgument,
+                    "All `to` values must be valid DIDs or DID URLs",
+                ))?;
+            }
+
+            let (to_did, _) = did_or_url(recipient);
+
+            // Check that message.to contains this recipient
+            match self.to {
+                Some(ref sto) if !sto.contains(&to_did.into()) => {
+                    Err(err_msg(
+                        ErrorKind::IllegalArgument,
+                        "`message.to` value does not contain all recipient DIDs",
+                    ))?;
+                }
+                _ => {}
+            }
+        }
+
+        // Validate from
         match from {
             Some(from) if !is_did(from) => Err(err_msg(
                 ErrorKind::IllegalArgument,
@@ -174,6 +245,7 @@ impl Message {
             _ => {}
         }
 
+        // Validate sign_by
         match sign_by {
             Some(sign_by) if !is_did(sign_by) => Err(err_msg(
                 ErrorKind::IllegalArgument,
@@ -182,18 +254,7 @@ impl Message {
             _ => {}
         }
 
-        let (to_did, _) = did_or_url(to);
-
-        match self.to {
-            Some(ref sto) if !sto.contains(&to_did.into()) => {
-                Err(err_msg(
-                    ErrorKind::IllegalArgument,
-                    "`message.to` value does not contain `to` value's DID",
-                ))?;
-            }
-            _ => {}
-        }
-
+        // Validate from matches message.from
         match (from, &self.from) {
             (Some(from), Some(ref sfrom)) if did_or_url(from).0 != sfrom => Err(err_msg(
                 ErrorKind::IllegalArgument,
@@ -203,6 +264,55 @@ impl Message {
         }
 
         Ok(())
+    }
+
+    /// Internal method that handles JWE envelope creation (signing + encryption)
+    /// This method is separated from pack_encrypted to allow reuse in routing protocols
+    async fn _pack_jwe_envelope<'dr, 'sr>(
+        &self,
+        to: &[&str],
+        from: Option<&str>,
+        sign_by: Option<&str>,
+        did_resolver: &'dr (dyn DIDResolver + 'dr),
+        secrets_resolver: &'sr (dyn SecretsResolver + 'sr),
+        options: &PackEncryptedOptions,
+    ) -> Result<(String, Option<String>, Vec<String>, Option<String>)> {
+        // Step 1: Create signed message if sign_by is provided, otherwise use plaintext
+        let (msg, sign_by_kid) = if let Some(sign_by) = sign_by {
+            let (msg, PackSignedMetadata { sign_by_kid }) = self
+                .pack_signed(sign_by, did_resolver, secrets_resolver)
+                .await
+                .context("Unable produce sign envelope")?;
+            (msg, Some(sign_by_kid))
+        } else {
+            let msg = self
+                .pack_plaintext(did_resolver)
+                .await
+                .context("Unable produce plaintext")?;
+            (msg, None)
+        };
+
+        // Step 2: Apply encryption (authcrypt if from is provided, anoncrypt otherwise)
+        let (msg, from_kid, to_kids) = if let Some(from) = from {
+            let (msg, from_kid, to_kids) = authcrypt(
+                to,
+                from,
+                did_resolver,
+                secrets_resolver,
+                msg.as_bytes(),
+                &options.enc_alg_auth,
+                &options.enc_alg_anon,
+                options.protect_sender,
+            )
+            .await?;
+            (msg, Some(from_kid), to_kids)
+        } else {
+            let (msg, to_kids) =
+                anoncrypt(to, did_resolver, msg.as_bytes(), &options.enc_alg_anon).await?;
+            (msg, None, to_kids)
+        };
+
+        Ok((msg, from_kid, to_kids, sign_by_kid))
     }
 }
 
@@ -222,6 +332,12 @@ pub struct PackEncryptedOptions {
     /// if forward is enabled these optional headers can be passed to the wrapping `Forward` messages.
     /// If forward is disabled this property will be ignored.
     pub forward_headers: Option<HashMap<String, Value>>,
+
+    /// Whether to use routing-multi protocol for optimized multi-recipient forwarding.
+    /// If `true`, uses the routing-multi/1.0 protocol which allows multiple attachments
+    /// and more efficient routing. If `false`, falls back to standard DIDComm 2.0 routing.
+    #[serde(default = "crate::utils::serde::_true")]
+    pub use_routing_multi: bool,
 
     /// Identifier (DID URL) of messaging service (https://identity.foundation/didcomm-messaging/spec/#did-document-service-endpoint).
     /// If DID doc contains multiple messaging services it allows specify what service to use.
@@ -243,6 +359,7 @@ impl Default for PackEncryptedOptions {
             protect_sender: false,
             forward: true,
             forward_headers: None,
+            use_routing_multi: true,
             messaging_service: None,
             enc_alg_auth: AuthCryptAlg::default(),
             enc_alg_anon: AnonCryptAlg::default(),
@@ -256,6 +373,7 @@ impl PackEncryptedOptions {
             protect_sender: false,
             forward: false,
             forward_headers: None,
+            use_routing_multi: true,
             messaging_service: None,
             enc_alg_auth: AuthCryptAlg::default(),
             enc_alg_anon: AnonCryptAlg::default(),
@@ -485,7 +603,7 @@ mod tests {
 
             let (msg, metadata) = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    to,
+                    &[to],
                     Some(from),
                     None,
                     &did_resolver,
@@ -496,7 +614,10 @@ mod tests {
                     },
                 )
                 .await
-                .expect("encrypt is ok.");
+                .expect("encrypt is ok.")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 metadata,
@@ -804,7 +925,7 @@ mod tests {
 
             let (msg, metadata) = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    to,
+                    &[to],
                     Some(from),
                     None,
                     &did_resolver,
@@ -817,7 +938,10 @@ mod tests {
                     },
                 )
                 .await
-                .expect("encrypt is ok.");
+                .expect("encrypt is ok.")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 metadata,
@@ -956,7 +1080,7 @@ mod tests {
 
             let (msg, metadata) = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    to,
+                    &[to],
                     Some(from),
                     Some(sign_by),
                     &did_resolver,
@@ -969,7 +1093,10 @@ mod tests {
                     },
                 )
                 .await
-                .expect("encrypt is ok.");
+                .expect("encrypt is ok.")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 metadata,
@@ -1089,7 +1216,7 @@ mod tests {
 
             let (msg, metadata) = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    to,
+                    &[to],
                     Some(from),
                     Some(sign_by),
                     &did_resolver,
@@ -1100,7 +1227,10 @@ mod tests {
                     },
                 )
                 .await
-                .expect("encrypt is ok.");
+                .expect("encrypt is ok.")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 metadata,
@@ -1346,7 +1476,7 @@ mod tests {
 
             let (msg, metadata) = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    to,
+                    &[to],
                     None,
                     None,
                     &did_resolver,
@@ -1358,7 +1488,10 @@ mod tests {
                     },
                 )
                 .await
-                .expect("encrypt is ok.");
+                .expect("encrypt is ok.")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 metadata,
@@ -1514,7 +1647,7 @@ mod tests {
 
             let (msg, metadata) = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    to,
+                    &[to],
                     None,
                     Some(sign_by),
                     &did_resolver,
@@ -1526,7 +1659,10 @@ mod tests {
                     },
                 )
                 .await
-                .expect("encrypt is ok.");
+                .expect("encrypt is ok.")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 metadata,
@@ -1602,7 +1738,7 @@ mod tests {
 
             let (msg, pack_metadata) = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    to,
+                    &[to],
                     from,
                     sign_by,
                     &did_resolver,
@@ -1610,7 +1746,10 @@ mod tests {
                     &PackEncryptedOptions::default(),
                 )
                 .await
-                .expect("Unable encrypt");
+                .expect("Unable encrypt")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 pack_metadata.messaging_service.as_ref(),
@@ -1785,7 +1924,7 @@ mod tests {
 
             let (packed_msg, pack_metadata) = msg
                 .pack_encrypted(
-                    to,
+                    &[to],
                     from,
                     sign_by,
                     &did_resolver,
@@ -1799,7 +1938,10 @@ mod tests {
                     },
                 )
                 .await
-                .expect("Unable encrypt");
+                .expect("Unable encrypt")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 pack_metadata.messaging_service.as_ref(),
@@ -2033,7 +2175,7 @@ mod tests {
 
             let (msg, pack_metadata) = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    to,
+                    &[to],
                     from,
                     sign_by,
                     &did_resolver,
@@ -2044,7 +2186,10 @@ mod tests {
                     },
                 )
                 .await
-                .expect("Unable encrypt");
+                .expect("Unable encrypt")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 pack_metadata.messaging_service.as_ref(),
@@ -2148,7 +2293,7 @@ mod tests {
 
         let res = MESSAGE_SIMPLE
             .pack_encrypted(
-                BOB_DID,
+                &[BOB_DID],
                 "not-a-did".into(),
                 None,
                 &did_resolver,
@@ -2178,7 +2323,7 @@ mod tests {
 
         let res = MESSAGE_SIMPLE
             .pack_encrypted(
-                "not-a-did",
+                &["not-a-did"],
                 None,
                 None,
                 &did_resolver,
@@ -2195,7 +2340,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Illegal argument provided: `to` value is not a valid DID or DID URL"
+            "Illegal argument provided: All `to` values must be valid DIDs or DID URLs"
         );
     }
 
@@ -2208,7 +2353,7 @@ mod tests {
 
         let res = MESSAGE_SIMPLE
             .pack_encrypted(
-                BOB_DID,
+                &[BOB_DID],
                 ALICE_DID.into(),
                 "not-a-did".into(),
                 &did_resolver,
@@ -2240,7 +2385,7 @@ mod tests {
         msg.from = CHARLIE_DID.to_string().into();
         let res = msg
             .pack_encrypted(
-                BOB_DID,
+                &[BOB_DID],
                 ALICE_DID.into(),
                 None,
                 &did_resolver,
@@ -2272,7 +2417,7 @@ mod tests {
         msg.to = Some(vec![CHARLIE_DID.to_string()]);
         let res = msg
             .pack_encrypted(
-                BOB_DID,
+                &[BOB_DID],
                 ALICE_DID.into(),
                 None,
                 &did_resolver,
@@ -2289,7 +2434,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Illegal argument provided: `message.to` value does not contain `to` value's DID"
+            "Illegal argument provided: `message.to` value does not contain all recipient DIDs"
         );
     }
 
@@ -2304,7 +2449,7 @@ mod tests {
         msg.to = Some(vec![CHARLIE_DID.to_string(), BOB_DID.to_string()]);
         let _ = msg
             .pack_encrypted(
-                BOB_DID,
+                &[BOB_DID],
                 ALICE_DID.into(),
                 None,
                 &did_resolver,
@@ -2328,7 +2473,7 @@ mod tests {
         msg.from = "not-a-did".to_string().into();
         let res = msg
             .pack_encrypted(
-                BOB_DID,
+                &[BOB_DID],
                 "not-a-did".into(),
                 None,
                 &did_resolver,
@@ -2360,7 +2505,7 @@ mod tests {
         msg.to = Some(vec!["not-a-did".to_string()]);
         let res = msg
             .pack_encrypted(
-                "not-a-did",
+                &["not-a-did"],
                 ALICE_DID.into(),
                 None,
                 &did_resolver,
@@ -2377,7 +2522,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Illegal argument provided: `to` value is not a valid DID or DID URL"
+            "Illegal argument provided: All `to` values must be valid DIDs or DID URLs"
         );
     }
 
@@ -2390,7 +2535,7 @@ mod tests {
 
         let _ = MESSAGE_SIMPLE
             .pack_encrypted(
-                BOB_DID,
+                &[BOB_DID],
                 "did:example:alice#key-x25519-1".into(),
                 None,
                 &did_resolver,
@@ -2414,7 +2559,7 @@ mod tests {
         msg.to = Some(vec![ALICE_DID.to_string(), BOB_DID.to_string()]);
         let _ = msg
             .pack_encrypted(
-                "did:example:bob#key-x25519-1",
+                &["did:example:bob#key-x25519-1"],
                 None,
                 None,
                 &did_resolver,
@@ -2436,7 +2581,7 @@ mod tests {
 
         let _ = MESSAGE_SIMPLE
             .pack_encrypted(
-                BOB_DID,
+                &[BOB_DID],
                 ALICE_DID.into(),
                 CHARLIE_DID.into(),
                 &did_resolver,
@@ -2461,7 +2606,7 @@ mod tests {
 
         let res = msg
             .pack_encrypted(
-                BOB_DID,
+                &[BOB_DID],
                 ALICE_DID.into(),
                 None,
                 &did_resolver,
@@ -2493,7 +2638,7 @@ mod tests {
         msg.to = Some(vec!["did:example:bob#key-x25519-1".into()]);
         let res = msg
             .pack_encrypted(
-                BOB_DID,
+                &[BOB_DID],
                 None,
                 None,
                 &did_resolver,
@@ -2510,7 +2655,7 @@ mod tests {
 
         assert_eq!(
             format!("{err}"),
-            "Illegal argument provided: `message.to` value does not contain `to` value's DID"
+            "Illegal argument provided: `message.to` value does not contain all recipient DIDs"
         );
     }
 
@@ -2525,7 +2670,7 @@ mod tests {
         msg.from = "did:example:unknown".to_string().into();
         let res = msg
             .pack_encrypted(
-                BOB_DID,
+                &[BOB_DID],
                 "did:example:unknown".into(),
                 None,
                 &did_resolver,
@@ -2553,7 +2698,7 @@ mod tests {
         let from = ALICE_DID.to_string() + "#unknown-key";
         let res = MESSAGE_SIMPLE
             .pack_encrypted(
-                BOB_DID,
+                &[BOB_DID],
                 from.as_str().into(),
                 None,
                 &did_resolver,
@@ -2585,7 +2730,7 @@ mod tests {
         msg.to = Some(vec!["did:example:unknown".into()]);
         let res = msg
             .pack_encrypted(
-                "did:example:unknown",
+                &["did:example:unknown"],
                 None,
                 None,
                 &did_resolver,
@@ -2616,7 +2761,7 @@ mod tests {
         let to = BOB_DID.to_string() + "#unknown-key";
         let res = MESSAGE_SIMPLE
             .pack_encrypted(
-                to.as_str(),
+                &[&to],
                 ALICE_DID.into(),
                 None,
                 &did_resolver,
@@ -2631,9 +2776,9 @@ mod tests {
         let err = res.expect_err("res is ok");
         assert_eq!(err.kind(), ErrorKind::DIDUrlNotFound);
 
-        assert_eq!(
-            format!("{err}"),
-            "DID URL not found: No recipient key agreements found"
+        assert!(
+            format!("{err}").contains("DID URL not found: No key agreements found for recipient"),
+            "Unexpected error message: {err}"
         );
     }
 
@@ -2647,7 +2792,7 @@ mod tests {
         let sign_by = ALICE_DID.to_string() + "#unknown-key";
         let res = MESSAGE_SIMPLE
             .pack_encrypted(
-                BOB_DID,
+                &[BOB_DID],
                 ALICE_DID.into(),
                 sign_by.as_str().into(),
                 &did_resolver,
@@ -2677,7 +2822,7 @@ mod tests {
 
         let res = MESSAGE_SIMPLE
             .pack_encrypted(
-                BOB_DID,
+                &[BOB_DID],
                 "did:example:alice#key-x25519-not-in-secrets-1".into(),
                 None,
                 &did_resolver,
@@ -2709,7 +2854,7 @@ mod tests {
 
         let res = MESSAGE_SIMPLE
             .pack_encrypted(
-                BOB_DID,
+                &[BOB_DID],
                 ALICE_DID.into(),
                 "did:example:alice#key-not-in-secrets-1".into(),
                 &did_resolver,
@@ -2740,7 +2885,7 @@ mod tests {
         let to = "did:example:bob#key-x25519-not-secrets-1";
         let _ = MESSAGE_SIMPLE
             .pack_encrypted(
-                to,
+                &[to],
                 ALICE_DID.into(),
                 None,
                 &did_resolver,
@@ -2794,7 +2939,7 @@ mod tests {
 
             let res = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    to,
+                    &[to],
                     from,
                     None,
                     &did_resolver,
@@ -2829,7 +2974,7 @@ mod tests {
 
         let (packed_msg, _pack_metadata) = MESSAGE_FROM_PRIOR_FULL
             .pack_encrypted(
-                BOB_DID,
+                &[BOB_DID],
                 Some(ALICE_DID),
                 None,
                 &did_resolver,
@@ -2840,7 +2985,10 @@ mod tests {
                 },
             )
             .await
-            .expect("Unable pack_encrypted");
+            .expect("Unable pack_encrypted")
+            .into_iter()
+            .next()
+            .unwrap();
 
         let (unpacked_msg, unpack_metadata) = Message::unpack(
             &packed_msg,

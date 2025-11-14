@@ -236,7 +236,7 @@ async fn test_end_to_end_alice_to_bob_encrypted() {
     // Alice packs the message
     let (packed_msg, _metadata) = message
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[&bob_did_doc.id],
             Some(&alice_did_doc.id),
             None, // no signing
             &did_resolver,
@@ -244,7 +244,10 @@ async fn test_end_to_end_alice_to_bob_encrypted() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Alice failed to pack message");
+        .expect("Alice failed to pack message")
+        .into_iter()
+        .next()
+        .unwrap();
 
     // Bob receives and unpacks the message
     let (unpacked_msg, unpack_metadata) = Message::unpack(
@@ -298,7 +301,7 @@ async fn test_end_to_end_alice_to_bob_signed_encrypted() {
     // Alice signs and encrypts the message
     let (packed_msg, _metadata) = message
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[&bob_did_doc.id],
             Some(&alice_did_doc.id),
             Some("did:example:alice#key-1"), // Alice signs with her key
             &did_resolver,
@@ -306,7 +309,10 @@ async fn test_end_to_end_alice_to_bob_signed_encrypted() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Alice failed to pack signed message");
+        .expect("Alice failed to pack signed message")
+        .into_iter()
+        .next()
+        .unwrap();
 
     // Bob unpacks and verifies
     let (unpacked_msg, unpack_metadata) = Message::unpack(
@@ -364,7 +370,7 @@ async fn test_end_to_end_multi_party_conversation() {
 
     let (alice_packed, _) = alice_msg
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[&bob_did_doc.id],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -372,7 +378,10 @@ async fn test_end_to_end_multi_party_conversation() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Alice failed to pack message to Bob");
+        .expect("Alice failed to pack message to Bob")
+        .into_iter()
+        .next()
+        .unwrap();
 
     let (bob_received, _) = Message::unpack(
         &alice_packed,
@@ -407,7 +416,7 @@ async fn test_end_to_end_multi_party_conversation() {
 
     let (bob_packed, _) = bob_to_charlie
         .pack_encrypted(
-            &charlie_did_doc.id,
+            &[&charlie_did_doc.id],
             Some(&bob_did_doc.id),
             None,
             &did_resolver,
@@ -415,7 +424,10 @@ async fn test_end_to_end_multi_party_conversation() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Bob failed to pack message to Charlie");
+        .expect("Bob failed to pack message to Charlie")
+        .into_iter()
+        .next()
+        .unwrap();
 
     let (charlie_received, _charlie_metadata) = Message::unpack(
         &bob_packed,
@@ -451,7 +463,7 @@ async fn test_end_to_end_multi_party_conversation() {
 
     let (charlie_packed, _) = charlie_response
         .pack_encrypted(
-            &alice_did_doc.id,
+            &[&alice_did_doc.id],
             Some(&charlie_did_doc.id),
             None,
             &did_resolver,
@@ -459,7 +471,10 @@ async fn test_end_to_end_multi_party_conversation() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Charlie failed to pack response to Alice");
+        .expect("Charlie failed to pack response to Alice")
+        .into_iter()
+        .next()
+        .unwrap();
 
     let (alice_received_response, _) = Message::unpack(
         &charlie_packed,
@@ -519,7 +534,7 @@ async fn test_end_to_end_cross_curve_messaging() {
 
     let (packed1, _) = alice_to_bob
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[&bob_did_doc.id],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -527,7 +542,10 @@ async fn test_end_to_end_cross_curve_messaging() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Alice→Bob cross-curve packing failed");
+        .expect("Alice→Bob cross-curve packing failed")
+        .into_iter()
+        .next()
+        .unwrap();
 
     let (unpacked1, metadata1) = Message::unpack(
         &packed1,
@@ -559,7 +577,7 @@ async fn test_end_to_end_cross_curve_messaging() {
 
     let (packed2, _) = bob_to_alice
         .pack_encrypted(
-            &alice_did_doc.id,
+            &[&alice_did_doc.id],
             Some(&bob_did_doc.id),
             None,
             &did_resolver,
@@ -567,7 +585,10 @@ async fn test_end_to_end_cross_curve_messaging() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Bob→Alice cross-curve packing failed");
+        .expect("Bob→Alice cross-curve packing failed")
+        .into_iter()
+        .next()
+        .unwrap();
 
     let (unpacked2, metadata2) = Message::unpack(
         &packed2,
@@ -607,7 +628,7 @@ async fn test_end_to_end_error_scenarios() {
 
     let result = message_to_unknown
         .pack_encrypted(
-            "did:example:unknown",
+            &["did:example:unknown"],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -630,7 +651,7 @@ async fn test_end_to_end_error_scenarios() {
 
     let (packed_for_bob, _) = alice_to_bob
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[&bob_did_doc.id],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -638,7 +659,10 @@ async fn test_end_to_end_error_scenarios() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Should successfully pack message for Bob");
+        .expect("Should successfully pack message for Bob")
+        .into_iter()
+        .next()
+        .unwrap();
 
     // Alice tries to unpack Bob's message (should fail)
     let alice_unpack_result = Message::unpack(
@@ -697,7 +721,7 @@ async fn test_end_to_end_message_threading() {
 
     let (packed1, _) = msg1
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[&bob_did_doc.id],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -705,6 +729,9 @@ async fn test_end_to_end_message_threading() {
             &PackEncryptedOptions::default(),
         )
         .await
+        .unwrap()
+        .into_iter()
+        .next()
         .unwrap();
 
     let (unpacked1, _) = Message::unpack(
@@ -736,7 +763,7 @@ async fn test_end_to_end_message_threading() {
 
     let (packed2, _) = msg2
         .pack_encrypted(
-            &alice_did_doc.id,
+            &[&alice_did_doc.id],
             Some(&bob_did_doc.id),
             None,
             &did_resolver,
@@ -744,6 +771,9 @@ async fn test_end_to_end_message_threading() {
             &PackEncryptedOptions::default(),
         )
         .await
+        .unwrap()
+        .into_iter()
+        .next()
         .unwrap();
 
     let (unpacked2, _) = Message::unpack(
@@ -778,7 +808,7 @@ async fn test_end_to_end_message_threading() {
 
     let (packed3, _) = msg3
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[&bob_did_doc.id],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -786,6 +816,9 @@ async fn test_end_to_end_message_threading() {
             &PackEncryptedOptions::default(),
         )
         .await
+        .unwrap()
+        .into_iter()
+        .next()
         .unwrap();
 
     let (unpacked3, _) = Message::unpack(
@@ -826,7 +859,7 @@ async fn test_comprehensive_error_scenarios() {
 
     let result = no_recipients_msg
         .pack_encrypted(
-            "", // Empty recipient
+            &[], // Empty recipient
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -849,7 +882,7 @@ async fn test_comprehensive_error_scenarios() {
 
     let result = malformed_did_msg
         .pack_encrypted(
-            "not-a-valid-did",
+            &["not-a-valid-did"],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -872,7 +905,7 @@ async fn test_comprehensive_error_scenarios() {
 
     let result = msg_to_sign
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[&bob_did_doc.id],
             Some(&alice_did_doc.id),
             Some("did:example:nonexistent#key-999"), // Non-existent signing key
             &did_resolver,
@@ -895,7 +928,7 @@ async fn test_comprehensive_error_scenarios() {
 
     let (mut packed_msg, _) = valid_msg
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[&bob_did_doc.id],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -903,7 +936,10 @@ async fn test_comprehensive_error_scenarios() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Should pack successfully");
+        .expect("Should pack successfully")
+        .into_iter()
+        .next()
+        .unwrap();
 
     // Corrupt the message by modifying a character
     packed_msg = packed_msg.replace('a', "x");
@@ -953,7 +989,7 @@ async fn test_message_content_edge_cases() {
 
     let (packed_msg, _) = empty_body_msg
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[&bob_did_doc.id],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -961,7 +997,10 @@ async fn test_message_content_edge_cases() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Should pack empty body successfully");
+        .expect("Should pack empty body successfully")
+        .into_iter()
+        .next()
+        .unwrap();
 
     let (unpacked_msg, _) = Message::unpack(
         &packed_msg,
@@ -987,7 +1026,7 @@ async fn test_message_content_edge_cases() {
 
     let (packed_msg, _) = large_body_msg
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[&bob_did_doc.id],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -995,7 +1034,10 @@ async fn test_message_content_edge_cases() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Should pack large body successfully");
+        .expect("Should pack large body successfully")
+        .into_iter()
+        .next()
+        .unwrap();
 
     let (unpacked_msg, _) = Message::unpack(
         &packed_msg,
@@ -1027,7 +1069,7 @@ async fn test_message_content_edge_cases() {
 
     let (packed_msg, _) = unicode_msg
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[&bob_did_doc.id],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -1035,7 +1077,10 @@ async fn test_message_content_edge_cases() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Should pack unicode message successfully");
+        .expect("Should pack unicode message successfully")
+        .into_iter()
+        .next()
+        .unwrap();
 
     let (unpacked_msg, _) = Message::unpack(
         &packed_msg,
@@ -1072,7 +1117,7 @@ async fn test_resolver_edge_cases() {
 
     let result = msg
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[&bob_did_doc.id],
             Some(&alice_did_doc.id),
             None,
             &empty_did_resolver,
@@ -1089,7 +1134,7 @@ async fn test_resolver_edge_cases() {
 
     let result = msg
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[&bob_did_doc.id],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -1105,7 +1150,7 @@ async fn test_resolver_edge_cases() {
 
     let result = msg
         .pack_encrypted(
-            &bob_did_doc.id,
+            &[&bob_did_doc.id],
             Some(&alice_did_doc.id),
             None,
             &did_resolver,
@@ -1147,7 +1192,7 @@ async fn test_sequential_message_processing() {
         // Alice packs the message
         let (packed_msg, _) = msg
             .pack_encrypted(
-                &bob_did_doc.id,
+                &[&bob_did_doc.id],
                 Some(&alice_did_doc.id),
                 None,
                 &did_resolver,
@@ -1155,7 +1200,10 @@ async fn test_sequential_message_processing() {
                 &PackEncryptedOptions::default(),
             )
             .await
-            .unwrap_or_else(|_| panic!("Should pack message {}", i));
+            .unwrap_or_else(|_| panic!("Should pack message {}", i))
+            .into_iter()
+            .next()
+            .unwrap();
 
         // Bob unpacks the message
         let (unpacked_msg, _) = Message::unpack(
@@ -1217,7 +1265,7 @@ async fn test_message_size_and_performance_limits() {
 
         let (packed_msg, _) = msg
             .pack_encrypted(
-                &bob_did_doc.id,
+                &[&bob_did_doc.id],
                 Some(&alice_did_doc.id),
                 None,
                 &did_resolver,
@@ -1225,7 +1273,10 @@ async fn test_message_size_and_performance_limits() {
                 &PackEncryptedOptions::default(),
             )
             .await
-            .unwrap_or_else(|_| panic!("Should pack {} message successfully", size_name));
+            .unwrap_or_else(|_| panic!("Should pack {} message successfully", size_name))
+            .into_iter()
+            .next()
+            .unwrap();
 
         let pack_duration = start_time.elapsed();
 

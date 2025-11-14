@@ -46,7 +46,7 @@ async fn main() {
 
     let (msg, metadata) = msg
         .pack_encrypted(
-            "did:example:bob#key-p256-1",
+            &["did:example:bob#key-p256-1"],
             "did:example:alice#key-p256-1".into(),
             "did:example:alice#key-2".into(),
             &did_resolver,
@@ -61,10 +61,14 @@ async fn main() {
                 messaging_service: Some("did:example:bob#didcomm-1".to_string()),
                 enc_alg_auth: AuthCryptAlg::A256cbcHs512Ecdh1puA256kw,
                 enc_alg_anon: AnonCryptAlg::A256gcmEcdhEsA256kw,
+                use_routing_multi: true,
             },
         )
         .await
-        .expect("Unable pack_encrypted");
+        .expect("Unable pack_encrypted")
+        .into_iter()
+        .next()
+        .unwrap();
 
     println!("Encryption metadata is\n{:?}\n", metadata);
 

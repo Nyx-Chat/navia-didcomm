@@ -1,3 +1,74 @@
+## [Unreleased]
+
+### ✨ Features
+
+* **Multi-recipient encryption**: `pack_encrypted` now supports encrypting for multiple recipients in a single operation
+  - Single Content Encryption Key (CEK) shared across all recipients
+  - Automatic recipient deduplication
+  - Each recipient receives their own encrypted key in the JWE recipients array
+  - All recipients must have compatible key types
+
+* **Routing-mod/1.0 protocol support**: Advanced routing optimization protocol
+  - Implements [routing-multi/1.0](https://identity.foundation/didcomm-messaging/spec/#routing-multi) extension
+  - Enables single message delivery to multiple next-hop mediators via attachments
+  - Recursive divergent path handling for complex multi-hop routing scenarios
+  - Automatic fallback to standard DIDComm 2.0 forward protocol when needed
+  - Example: David, Eve, Frank through shared mediators = 1 optimized message instead of 3
+
+* **Complex multi-hop routing**: Full support for 3+ hop mediator chains
+  - Recursive routing structure creation when paths diverge at any level
+  - Verified end-to-end delivery through complex mediator topologies
+  - Efficient message grouping when recipients share partial routing paths
+  - Example: Recipients with paths like `[med1, med2, med3]` and `[med1, med2, med4]` optimally routed
+
+* **Routing optimization**: Intelligent message routing minimizes network overhead
+  - Analyzes mediator chains to find common routing paths
+  - Groups recipients sharing mediators to reduce message count
+  - Example: 10 recipients through same 2 mediators = 1 message instead of 10
+  - Automatic detection of direct vs. mediated delivery
+  - Prefix-based and suffix-based routing optimizations
+
+* **API improvements**: Enhanced ergonomics and performance
+  - `pack_encrypted` accepts `&[&str]` for zero-copy recipient list
+  - Returns `Vec<(String, PackEncryptedMetadata)>` for optimal routing
+  - Internal API optimized to use string slices throughout the call chain
+  - Eliminates unnecessary String allocations in hot paths
+
+### 🔄 Breaking Changes
+
+* `pack_encrypted` signature changed:
+  - **Before**: `to: &str` → **After**: `to: &[&str]`
+  - **Before**: `Result<(String, PackEncryptedMetadata)>` → **After**: `Result<Vec<(String, PackEncryptedMetadata)>>`
+  - Migration: Single recipient `&bob_did` → `&[bob_did]`, extract first result with `.into_iter().next().unwrap()`
+
+### 🐛 Bug Fixes
+
+* **Routing**: Fixed divergent path handling when recipients share initial mediators but then diverge
+  - Now correctly creates routing-multi messages at divergence points
+  - Properly encrypts for next hop mediator instead of first mediator in fallback code
+  - Forward messages now point to correct destination after mediator decrypts
+* **Code quality**: Removed unused `build_forward_message_multi` function
+* **Clippy**: Fixed `cloned_ref_to_slice_refs` warning by using `std::slice::from_ref`
+
+### 📝 Documentation
+
+* Updated README.md with current API examples and routing-multi/1.0 protocol information
+* Updated docs/API.md with accurate function signatures, metadata types, and routing protocol details
+* Added comprehensive examples for single and multi-recipient scenarios
+* Added routing-multi protocol reference and constants
+
+### 🧪 Testing
+
+* Increased test coverage from 190 to 228 tests
+* Added multi-recipient test suite (16 tests including complex 3-hop routing)
+  - All recipients can unpack same message (shared CEK verification)
+  - Mixed direct and routed recipients
+  - Varying routing depths (1-3 hops)
+  - Mediator security (cannot decrypt content)
+  - No common paths optimization
+* Added routing optimization tests (11 tests)
+* End-to-end verification of 3-hop routing with divergent paths
+
 ## [1.2.0](https://github.com/Nyx-Chat/navia-didcomm/compare/v1.1.1...v1.2.0) (2025-10-06)
 
 ### ✨ Features

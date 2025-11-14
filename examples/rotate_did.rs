@@ -65,7 +65,7 @@ async fn main() {
     // --- Packing encrypted and authenticated message ---
     let (msg, metadata) = msg
         .pack_encrypted(
-            BOB_DID,
+            &[BOB_DID],
             Some(ALICE_DID),
             None,
             &did_resolver,
@@ -73,7 +73,10 @@ async fn main() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Unable pack_encrypted");
+        .expect("Unable pack_encrypted")
+        .into_iter()
+        .next()
+        .unwrap();
 
     println!("Encryption metadata is\n{:?}\n", metadata);
 

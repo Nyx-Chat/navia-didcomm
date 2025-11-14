@@ -55,7 +55,7 @@ async fn non_repudiable_encryption() {
 
     let (msg, metadata) = msg
         .pack_encrypted(
-            BOB_DID,
+            &[BOB_DID],
             Some(ALICE_DID),
             Some(ALICE_DID),
             &did_resolver,
@@ -63,7 +63,10 @@ async fn non_repudiable_encryption() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Unable pack_encrypted");
+        .expect("Unable pack_encrypted")
+        .into_iter()
+        .next()
+        .unwrap();
 
     println!("Encryption metadata is\n{:?}\n", metadata);
 
@@ -147,7 +150,7 @@ async fn multi_recipient() {
 
     let (msg_bob, metadata_bob) = msg
         .pack_encrypted(
-            BOB_DID,
+            &[BOB_DID],
             Some(ALICE_DID),
             None,
             &did_resolver,
@@ -155,7 +158,13 @@ async fn multi_recipient() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Unable pack_encrypted");
+        .expect("Unable pack_encrypted")
+        .into_iter()
+        .next()
+        .unwrap();
+
+    println!("Packed Message: {}", msg_bob);
+    println!("Pack Metadata: {:?}", metadata_bob);
 
     // --- Sending message by Alice to Bob ---
     println!("Alice is sending message to Bob \n{}\n", msg_bob);
@@ -165,7 +174,7 @@ async fn multi_recipient() {
 
     let (msg_charlie, metadata_charlie) = msg
         .pack_encrypted(
-            CHARLIE_DID,
+            &[CHARLIE_DID],
             Some(ALICE_DID),
             None,
             &did_resolver,
@@ -173,7 +182,10 @@ async fn multi_recipient() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Unable pack_encrypted");
+        .expect("Unable pack_encrypted")
+        .into_iter()
+        .next()
+        .unwrap();
 
     // --- Sending message by Alice to Charlie ---
     println!("Alice is sending message to Charlie \n{}\n", msg_charlie);
@@ -390,7 +402,7 @@ async fn repudiable_authenticated_encryption() {
 
     let (msg, metadata) = msg
         .pack_encrypted(
-            BOB_DID,
+            &[BOB_DID],
             Some(ALICE_DID),
             None,
             &did_resolver,
@@ -398,7 +410,10 @@ async fn repudiable_authenticated_encryption() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Unable pack_encrypted");
+        .expect("Unable pack_encrypted")
+        .into_iter()
+        .next()
+        .unwrap();
 
     println!("Encryption metadata is\n{:?}\n", metadata);
 
@@ -479,7 +494,7 @@ async fn repudiable_non_authenticated_encryption() {
 
     let (msg, metadata) = msg
         .pack_encrypted(
-            BOB_DID,
+            &[BOB_DID],
             None,
             None,
             &did_resolver,
@@ -487,7 +502,10 @@ async fn repudiable_non_authenticated_encryption() {
             &PackEncryptedOptions::default(),
         )
         .await
-        .expect("Unable pack_encrypted");
+        .expect("Unable pack_encrypted")
+        .into_iter()
+        .next()
+        .unwrap();
 
     println!("Encryption metadata is\n{:?}\n", metadata);
 

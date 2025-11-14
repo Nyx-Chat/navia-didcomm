@@ -199,7 +199,7 @@ mod tests {
 
         let (packed_msg, metadata) = msg
             .pack_encrypted(
-                recipient,
+                &[recipient],
                 Some(sender),
                 None,
                 &sender_did_resolver,
@@ -207,7 +207,10 @@ mod tests {
                 &PackEncryptedOptions::default(),
             )
             .await
-            .expect("pack is ok.");
+            .expect("pack is ok.")
+            .into_iter()
+            .next()
+            .unwrap();
 
         // --- Send message using service endpoint ---
 

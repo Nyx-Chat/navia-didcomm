@@ -7,54 +7,73 @@ Complete API documentation for the navia-didcomm library.
 ### Message Packing
 
 #### `pack_encrypted`
-Pack a message with encryption for specific recipients.
+Pack a message with encryption for one or more recipients.
 
 ```rust
 pub async fn pack_encrypted(
-    message: &Message,
-    sender_id: &str,
-    recipients_ids: &[String],
+    &self,
+    to: &[&str],
+    from: Option<&str>,
     sign_by: Option<&str>,
     did_resolver: &dyn DIDResolver,
     secrets_resolver: &dyn SecretsResolver,
     options: &PackEncryptedOptions,
-) -> Result<String>
+) -> Result<Vec<(String, PackEncryptedMetadata)>>
 ```
 
 **Parameters:**
-- `message`: The message to pack
-- `sender_id`: DID or DID URL of the sender
-- `recipients_ids`: List of recipient DIDs or DID URLs
-- `sign_by`: Optional DID for message signing (None for anoncrypt, Some for authcrypt)
+- `to`: Array of recipient DIDs or DID URLs (supports multiple recipients)
+- `from`: Optional sender DID (None for anoncrypt, Some for authcrypt)
+- `sign_by`: Optional DID for message signing (adds non-repudiation)
 - `did_resolver`: Resolver for DID documents
 - `secrets_resolver`: Resolver for cryptographic secrets
-- `options`: Packing options (forwarding, etc.)
+- `options`: Packing options (forwarding, algorithms, etc.)
 
-**Returns:** JWE-encrypted message as JSON string
+**Returns:** Vector of (encrypted message, metadata) tuples - one per routing destination
+
+**Features:**
+- **Multi-recipient support**: Single encryption for multiple recipients with shared CEK
+- **Automatic deduplication**: Silently removes duplicate recipients
+- **Routing optimization**: Minimizes messages when recipients share mediators
+- **Anoncrypt**: Set `from` to `None` for anonymous encryption
+- **Authcrypt**: Set `from` to sender DID for authenticated encryption
+- **Non-repudiation**: Set `sign_by` to add digital signature
 
 #### `pack_signed`
 Pack a message with signature only (no encryption).
 
 ```rust
 pub async fn pack_signed(
-    message: &Message,
+    &self,
     sign_by: &str,
     did_resolver: &dyn DIDResolver,
     secrets_resolver: &dyn SecretsResolver,
-) -> Result<String>
+) -> Result<(String, PackSignedMetadata)>
 ```
+
+**Parameters:**
+- `sign_by`: DID for message signing
+- `did_resolver`: Resolver for DID documents
+- `secrets_resolver`: Resolver for cryptographic secrets
+
+**Returns:** Tuple of (signed message, metadata)
 
 #### `pack_plaintext`
 Pack a message as plaintext (no encryption or signature).
 
 ```rust
-pub fn pack_plaintext(message: &Message) -> Result<String>
+pub fn pack_plaintext(&self, did_resolver: &dyn DIDResolver) -> Result<String>
 ```
+
+**Parameters:**
+- `did_resolver`: Resolver for DID documents (for validation)
+
+**Returns:** Plaintext DIDComm message as JSON string
 
 ### Message Unpacking
 
 #### `unpack`
-Unpack any type of DIDComm message.
+Unpack any type of DIDComm message (encrypted, signed, or plaintext).
 
 ```rust
 pub async fn unpack(
@@ -62,10 +81,21 @@ pub async fn unpack(
     did_resolver: &dyn DIDResolver,
     secrets_resolver: &dyn SecretsResolver,
     options: &UnpackOptions,
-) -> Result<(Message, MessageMetadata)>
+) -> Result<(Message, UnpackMetadata)>
 ```
 
+**Parameters:**
+- `packed_msg`: JWE, JWS, or plaintext JSON message
+- `did_resolver`: Resolver for DID documents
+- `secrets_resolver`: Resolver for cryptographic secrets
+- `options`: Unpacking options
+
 **Returns:** Tuple of (unpacked message, metadata about the message)
+
+**Features:**
+- Automatically detects message type (encrypted/signed/plaintext)
+- Supports multi-recipient messages (each recipient can unpack independently)
+- Provides detailed metadata about encryption, authentication, and routing
 
 ### Message Types
 
@@ -109,6 +139,71 @@ impl MessageBuilder {
     pub fn attachments(mut self, attachments: Vec<Attachment>) -> Self
     pub fn header(mut self, key: String, value: Value) -> Self
     pub fn finalize(self) -> Message
+}
+```
+
+### Metadata Types
+
+#### `PackEncryptedMetadata`
+Metadata returned when packing an encrypted message.
+
+```rust
+#[derive(Debug, Clone)]
+pub struct PackEncryptedMetadata {
+    pub messaging_service: Option<MessagingServiceMetadata>,
+    pub from_kid: Option<String>,
+    pub sign_by_kid: Option<String>,
+    pub to_kids: Vec<String>,
+    pub message_ids: Vec<String>,
+}
+```
+
+**Fields:**
+- `messaging_service`: Service endpoint for message delivery (if routing enabled)
+- `from_kid`: Key ID of the sender (for authcrypt)
+- `sign_by_kid`: Key ID used for signing (if non-repudiation enabled)
+- `to_kids`: Key IDs of all recipients
+- `message_ids`: IDs of all messages in the chain (including forward messages)
+
+#### `UnpackMetadata`
+Metadata returned when unpacking a message.
+
+```rust
+#[derive(Debug, Clone)]
+pub struct UnpackMetadata {
+    pub encrypted: bool,
+    pub authenticated: bool,
+    pub non_repudiation: bool,
+    pub anonymous_sender: bool,
+    pub encrypted_from_kid: Option<String>,
+    pub encrypted_to_kids: Option<Vec<String>>,
+    pub sign_from: Option<String>,
+    pub enc_alg_auth: Option<AuthCryptAlg>,
+    pub enc_alg_anon: Option<AnonCryptAlg>,
+    pub message_ids: Vec<String>,
+}
+```
+
+**Fields:**
+- `encrypted`: Whether message was encrypted
+- `authenticated`: Whether sender was authenticated
+- `non_repudiation`: Whether message was signed
+- `anonymous_sender`: Whether sender is anonymous
+- `encrypted_from_kid`: Sender's key ID (if authenticated encryption)
+- `encrypted_to_kids`: All recipient key IDs (supports multi-recipient)
+- `sign_from`: Signer's key ID (if signed)
+- `enc_alg_auth`: Authenticated encryption algorithm used
+- `enc_alg_anon`: Anonymous encryption algorithm used
+- `message_ids`: IDs of all messages in the chain
+
+#### `PackSignedMetadata`
+Metadata returned when packing a signed message.
+
+```rust
+#[derive(Debug, Clone)]
+pub struct PackSignedMetadata {
+    pub sign_by_kid: String,
+    pub sign_alg: SignAlg,
 }
 ```
 
@@ -206,15 +301,33 @@ pub struct Secret {
 
 ### Routing Protocol
 
+The library supports both standard DIDComm 2.0 routing and the routing-multi/1.0 extension for optimized multi-recipient routing.
+
 #### `try_parse_forward`
-Parse a message to check if it's a forward routing message.
+Parse a message to check if it's a standard DIDComm 2.0 forward routing message.
 
 ```rust
 pub fn try_parse_forward(msg: &Message) -> Option<ParsedForward<'_>>
 ```
 
+**Returns:** Parsed forward message containing the next destination and forwarded message attachment.
+
+#### `try_parse_forward_multi`
+Parse a message to check if it's a routing-multi/1.0 forward message with multiple destinations.
+
+```rust
+pub fn try_parse_forward_multi(msg: &Message) -> Option<ParsedForwardMulti<'_>>
+```
+
+**Returns:** Parsed routing-multi forward message containing array of NextDestination objects.
+
+**Features:**
+- Supports multiple next-hop destinations with separate attachments
+- Enables single message to route to multiple mediators
+- Used automatically when `pack_encrypted` detects optimization opportunities
+
 #### `wrap_in_forward`
-Wrap a message for routing through mediators.
+Wrap a message for routing through mediators (standard DIDComm 2.0 protocol).
 
 ```rust
 pub async fn wrap_in_forward(
@@ -225,6 +338,8 @@ pub async fn wrap_in_forward(
     secrets_resolver: &dyn SecretsResolver,
 ) -> Result<Message>
 ```
+
+**Note:** The library automatically uses routing-multi/1.0 optimization when beneficial.
 
 ## Error Handling
 
@@ -340,7 +455,11 @@ pub const DIDCOMM_SIGNED_MEDIA_TYPE: &str = "application/didcomm-signed+json";
 pub const DIDCOMM_PLAIN_MEDIA_TYPE: &str = "application/didcomm-plain+json";
 ```
 
-### Forward Message Type
+### Forward Message Types
 ```rust
+// Standard DIDComm 2.0 forward message
 pub const FORWARD_MSG_TYPE: &str = "https://didcomm.org/routing/2.0/forward";
+
+// Routing-mod/1.0 forward message with multiple destinations
+pub const FORWARD_MULTI_MSG_TYPE: &str = "https://didcomm.org/routing-multi/1.0/forward";
 ```

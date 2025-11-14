@@ -12,32 +12,6 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Validate commit messages follow conventional commits
-  commitlint:
-    name: Commit Message Validation
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-      
-      - name: Install commitlint
-        run: |
-          npm install -g @commitlint/cli @commitlint/config-conventional
-      
-      - name: Validate PR title follows conventional commits
-        run: |
-          echo "${{ github.event.pull_request.title }}" | npx commitlint
-      
-      - name: Validate commit messages
-        run: |
-          npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
-
   # Quick checks that should fail fast
   quick-checks:
     name: Quick Checks

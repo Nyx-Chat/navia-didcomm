@@ -652,7 +652,7 @@ mod test {
 
             let (msg, pack_metadata) = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    to,
+                    &[to],
                     from,
                     sign_by,
                     &did_resolver,
@@ -660,7 +660,10 @@ mod test {
                     &PackEncryptedOptions::default(),
                 )
                 .await
-                .expect("Unable encrypt");
+                .expect("Unable encrypt")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 pack_metadata.messaging_service.as_ref(),
@@ -777,7 +780,7 @@ mod test {
 
             let (msg, pack_metadata) = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    to,
+                    &[to],
                     from,
                     sign_by,
                     &did_resolver,
@@ -785,7 +788,10 @@ mod test {
                     &PackEncryptedOptions::default(),
                 )
                 .await
-                .expect("Unable encrypt");
+                .expect("Unable encrypt")
+                .into_iter()
+                .next()
+                .unwrap();
 
             assert_eq!(
                 pack_metadata.messaging_service.as_ref(),
@@ -1021,7 +1027,7 @@ mod test {
 
             let (packed, _) = msg
                 .pack_encrypted(
-                    to,
+                    &[to],
                     None,
                     None,
                     &did_resolver,
@@ -1033,7 +1039,10 @@ mod test {
                     },
                 )
                 .await
-                .expect("Unable pack_encrypted");
+                .expect("Unable pack_encrypted")
+                .into_iter()
+                .next()
+                .unwrap();
 
             _verify_unpack(
                 &packed,
@@ -1156,7 +1165,7 @@ mod test {
 
             let (packed, _) = msg
                 .pack_encrypted(
-                    to,
+                    &[to],
                     None,
                     Some(sign_by),
                     &did_resolver,
@@ -1168,7 +1177,10 @@ mod test {
                     },
                 )
                 .await
-                .expect("Unable pack_encrypted");
+                .expect("Unable pack_encrypted")
+                .into_iter()
+                .next()
+                .unwrap();
 
             _verify_unpack_undeterministic(
                 &packed,
@@ -1349,7 +1361,7 @@ mod test {
 
             let (packed, _) = msg
                 .pack_encrypted(
-                    to,
+                    &[to],
                     Some(from),
                     None,
                     &did_resolver,
@@ -1360,7 +1372,10 @@ mod test {
                     },
                 )
                 .await
-                .expect("Unable pack_encrypted");
+                .expect("Unable pack_encrypted")
+                .into_iter()
+                .next()
+                .unwrap();
 
             _verify_unpack(
                 &packed,
@@ -1525,7 +1540,7 @@ mod test {
 
             let (packed, _) = msg
                 .pack_encrypted(
-                    to,
+                    &[to],
                     Some(from),
                     None,
                     &did_resolver,
@@ -1538,7 +1553,10 @@ mod test {
                     },
                 )
                 .await
-                .expect("Unable pack_encrypted");
+                .expect("Unable pack_encrypted")
+                .into_iter()
+                .next()
+                .unwrap();
 
             _verify_unpack(
                 &packed,
@@ -1638,7 +1656,7 @@ mod test {
 
             let (packed, _) = msg
                 .pack_encrypted(
-                    to,
+                    &[to],
                     Some(from),
                     Some(sign_by),
                     &did_resolver,
@@ -1651,7 +1669,10 @@ mod test {
                     },
                 )
                 .await
-                .expect("Unable pack_encrypted");
+                .expect("Unable pack_encrypted")
+                .into_iter()
+                .next()
+                .unwrap();
 
             _verify_unpack_undeterministic(
                 &packed,
@@ -1757,7 +1778,7 @@ mod test {
 
             let (packed, _) = msg
                 .pack_encrypted(
-                    to,
+                    &[to],
                     Some(from),
                     Some(sign_by),
                     &did_resolver,
@@ -1768,7 +1789,10 @@ mod test {
                     },
                 )
                 .await
-                .expect("encrypt is ok.");
+                .expect("encrypt is ok.")
+                .into_iter()
+                .next()
+                .unwrap();
 
             _verify_unpack_undeterministic(
                 &packed,

@@ -84,17 +84,52 @@ pub(crate) async fn _try_unpack_authcrypt<'dr, 'sr>(
         })?
         .as_key_pair()?;
 
-    let to_kids: Vec<_> = parsed_jwe
+    let all_to_kids: Vec<&str> = parsed_jwe
         .jwe
         .recipients
         .iter()
         .map(|r| r.header.kid)
         .collect();
 
+    // Store all recipient keys in metadata for multi-recipient support
+    if metadata.encrypted_to_kids.is_none() {
+        metadata.encrypted_to_kids = Some(all_to_kids.iter().map(|&k| k.to_owned()).collect());
+    } else {
+        // Verify that same keys used for authcrypt as for anoncrypt envelope
+        let existing_kids: std::collections::HashSet<&str> = metadata
+            .encrypted_to_kids
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        let new_kids: std::collections::HashSet<&str> = all_to_kids.iter().copied().collect();
+        if existing_kids != new_kids {
+            return Err(err_msg(
+                ErrorKind::InvalidState,
+                "Key mismatch between anoncrypt and authcrypt envelopes",
+            ));
+        }
+    }
+
+    // Find which keys belong to the current unpacker (multi-recipient support)
+    let to_kids_found = secrets_resolver.find_secrets(&all_to_kids).await?;
+
+    if to_kids_found.is_empty() {
+        Err(err_msg(
+            ErrorKind::SecretNotFound,
+            "No recipient secrets found for current DID",
+        ))?;
+    }
+
+    // to_kids_found already contains the key IDs we can decrypt with
+    let to_kids: Vec<&str> = to_kids_found;
+
+    // Validate that all our keys belong to the same DID
     let to_kid = to_kids
         .first()
         .copied()
-        .ok_or_else(|| err_msg(ErrorKind::Malformed, "No recipient keys found"))?;
+        .ok_or_else(|| err_msg(ErrorKind::Malformed, "No decryptable recipient keys found"))?;
 
     let (to_did, _) = did_or_url(to_kid);
 
@@ -104,32 +139,18 @@ pub(crate) async fn _try_unpack_authcrypt<'dr, 'sr>(
     }) {
         Err(err_msg(
             ErrorKind::Malformed,
-            "Recipient keys are outside of one did or can't be resolved to key agreement",
+            "Recipient keys for current DID are malformed or can't be resolved to key agreement",
         ))?;
-    }
-
-    if metadata.encrypted_to_kids.is_none() {
-        metadata.encrypted_to_kids = Some(to_kids.iter().map(|&k| k.to_owned()).collect());
-    } else {
-        // TODO: Verify that same keys used for authcrypt as for anoncrypt envelope
     }
 
     metadata.authenticated = true;
     metadata.encrypted = true;
     metadata.encrypted_from_kid = Some(from_kid.into());
 
-    let to_kids_found = secrets_resolver.find_secrets(&to_kids).await?;
-
-    if to_kids_found.is_empty() {
-        Err(err_msg(
-            ErrorKind::SecretNotFound,
-            "No recipient secrets found",
-        ))?;
-    }
-
+    // to_kids now contains the key IDs we can decrypt with
     let mut payload: Option<Vec<u8>> = None;
 
-    for to_kid in to_kids_found {
+    for to_kid in to_kids {
         let to_key = secrets_resolver
             .get_secret(to_kid)
             .await?
