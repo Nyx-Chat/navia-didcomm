@@ -1,3 +1,33 @@
+## [1.3.0](https://github.com/Nyx-Chat/navia-didcomm/compare/v1.2.0...v1.3.0) (2025-11-14)
+
+### ⚠ BREAKING CHANGES
+
+* pack_encrypted signature changed from `to: &str` to `to: &[String]`
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+
+### ✨ Features
+
+* add multi-recipient DIDComm v2 encryption support ([8c89d89](https://github.com/Nyx-Chat/navia-didcomm/commit/8c89d897307f631e43af794304c940b63414012e))
+* add multi-recipient encryption and routing-multi protocol ([0b3f6b2](https://github.com/Nyx-Chat/navia-didcomm/commit/0b3f6b260441fd18cdef2273d9fffaefc7ce9362))
+
+### 🐛 Bug Fixes
+
+* resolve clippy warnings ([a26824c](https://github.com/Nyx-Chat/navia-didcomm/commit/a26824c363408fb1ea9e2cfb4a31d0fbada5dc51))
+* restore advanced parameters in examples/advanced_params.rs ([6bfa56b](https://github.com/Nyx-Chat/navia-didcomm/commit/6bfa56b13f29261969ab937f3a2df7d2e75a292e))
+
+### 📝 Documentation
+
+* document multi-recipient and routing optimizations ([a5b958a](https://github.com/Nyx-Chat/navia-didcomm/commit/a5b958a438177d56fcdac9ceefce6c3aa7f79f60))
+* update documentation to reflect current API ([42dbbbc](https://github.com/Nyx-Chat/navia-didcomm/commit/42dbbbca081bf91c1fd41a692e095c643cfac57d))
+
+### ♻️ Refactoring
+
+* change pack_encrypted to accept &[&str] instead of &[String] ([c2d5edf](https://github.com/Nyx-Chat/navia-didcomm/commit/c2d5edfb0e3fa3ed1d4d5f14c9854d9c18134c68))
+* optimize pack_encrypted internal API to accept &[&str] ([7bf6397](https://github.com/Nyx-Chat/navia-didcomm/commit/7bf6397c9f4d8052e93e0837017f8ccd9fbe5b86))
+
 ## [Unreleased]
 
 ### ✨ Features
