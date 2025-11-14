@@ -59,8 +59,13 @@
 
 ### 🧪 Testing
 
-* Increased test coverage from 190 to 223 tests
-* Added multi-recipient test suite (11 tests including complex 3-hop routing)
+* Increased test coverage from 190 to 228 tests
+* Added multi-recipient test suite (16 tests including complex 3-hop routing)
+  - All recipients can unpack same message (shared CEK verification)
+  - Mixed direct and routed recipients
+  - Varying routing depths (1-3 hops)
+  - Mediator security (cannot decrypt content)
+  - No common paths optimization
 * Added routing optimization tests (11 tests)
 * End-to-end verification of 3-hop routing with divergent paths
 

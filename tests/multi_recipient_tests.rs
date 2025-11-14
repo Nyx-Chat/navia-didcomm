@@ -8,7 +8,7 @@ pub(crate) use navia_didcomm as didcomm;
 
 use base64::Engine;
 use navia_didcomm::{
-    did::resolvers::ExampleDIDResolver,
+    did::{resolvers::ExampleDIDResolver, DIDDoc},
     secrets::{resolvers::ExampleSecretsResolver, SecretsResolver},
     Message, PackEncryptedOptions, UnpackOptions,
 };
@@ -20,6 +20,19 @@ use test_vectors::{
     MEDIATOR1_SECRETS, MEDIATOR2_DID_DOC, MEDIATOR2_SECRETS, MEDIATOR3_DID_DOC, MEDIATOR3_SECRETS,
     MEDIATOR4_DID_DOC, MEDIATOR4_SECRETS,
 };
+
+// Helper function to modify DID doc routing keys
+fn with_routing_keys(did_doc: &DIDDoc, routing_keys: Vec<String>) -> DIDDoc {
+    let mut cloned = did_doc.clone();
+    for service in cloned.service.iter_mut() {
+        if let navia_didcomm::did::ServiceKind::DIDCommMessaging { ref mut value } =
+            service.service_endpoint
+        {
+            value.routing_keys = routing_keys.clone();
+        }
+    }
+    cloned
+}
 
 #[tokio::test]
 async fn test_multi_recipient_authcrypt() {
@@ -247,7 +260,7 @@ async fn test_single_recipient_still_works() {
         .next()
         .unwrap();
 
-    assert!(metadata.to_kids.len() >= 1);
+    assert!(!metadata.to_kids.is_empty());
 
     // Should decrypt successfully
     let (msg, meta) = Message::unpack(
@@ -1274,4 +1287,363 @@ async fn test_multi_recipient_shared_first_hop_without_routing_multi() {
     }
 
     println!("✅ DIDComm 2.0 fallback test passed: 2 separate messages");
+}
+
+#[tokio::test]
+async fn test_all_recipients_can_unpack_same_message() {
+    // Test that all recipients can unpack the same multi-recipient message
+    // This verifies the shared CEK approach works correctly
+    let did_resolver = ExampleDIDResolver::new(vec![
+        ALICE_DID_DOC.clone(),
+        BOB_DID_DOC.clone(),
+        CHARLIE_DID_DOC.clone(),
+        DAVID_DID_DOC.clone(),
+    ]);
+
+    let sender_secrets = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+    let bob_secrets = ExampleSecretsResolver::new(BOB_SECRETS.clone());
+    let charlie_secrets = ExampleSecretsResolver::new(CHARLIE_SECRETS.clone());
+    let david_secrets = ExampleSecretsResolver::new(DAVID_SECRETS.clone());
+
+    let message = Message::build(
+        "test-all-unpack".to_string(),
+        "https://example.com/test".to_string(),
+        json!({"content": "message for all recipients", "data": [1, 2, 3]}),
+    )
+    .to(BOB_DID.to_owned())
+    .to(CHARLIE_DID.to_owned())
+    .to(DAVID_DID.to_owned())
+    .from(ALICE_DID.to_owned())
+    .finalize();
+
+    // Pack for all three recipients
+    let (packed, metadata) = message
+        .pack_encrypted(
+            &[BOB_DID, CHARLIE_DID, DAVID_DID],
+            Some(ALICE_DID),
+            None,
+            &did_resolver,
+            &sender_secrets,
+            &PackEncryptedOptions {
+                forward: false,
+                ..PackEncryptedOptions::default()
+            },
+        )
+        .await
+        .unwrap()
+        .into_iter()
+        .next()
+        .unwrap();
+
+    // Verify metadata
+    assert!(
+        metadata.to_kids.len() >= 3,
+        "Should have keys for 3 recipients"
+    );
+    assert!(metadata.from_kid.is_some());
+
+    // All three recipients should be able to unpack
+    let (bob_msg, bob_meta) = Message::unpack(
+        &packed,
+        &did_resolver,
+        &bob_secrets,
+        &UnpackOptions::default(),
+    )
+    .await
+    .expect("Bob should be able to unpack");
+
+    let (charlie_msg, charlie_meta) = Message::unpack(
+        &packed,
+        &did_resolver,
+        &charlie_secrets,
+        &UnpackOptions::default(),
+    )
+    .await
+    .expect("Charlie should be able to unpack");
+
+    let (david_msg, david_meta) = Message::unpack(
+        &packed,
+        &did_resolver,
+        &david_secrets,
+        &UnpackOptions::default(),
+    )
+    .await
+    .expect("David should be able to unpack");
+
+    // All should get the identical message
+    assert_eq!(bob_msg.id, "test-all-unpack");
+    assert_eq!(charlie_msg.id, "test-all-unpack");
+    assert_eq!(david_msg.id, "test-all-unpack");
+
+    assert_eq!(bob_msg.body, charlie_msg.body);
+    assert_eq!(bob_msg.body, david_msg.body);
+    assert_eq!(
+        bob_msg.body,
+        json!({"content": "message for all recipients", "data": [1, 2, 3]})
+    );
+
+    // All should have authenticated metadata
+    assert!(bob_meta.authenticated);
+    assert!(charlie_meta.authenticated);
+    assert!(david_meta.authenticated);
+
+    println!("✅ All 3 recipients successfully unpacked the same message");
+}
+
+#[tokio::test]
+async fn test_multi_recipient_mixed_direct_and_routed() {
+    // Test mix of direct recipients (no routing) and routed recipients (with mediators)
+    // Bob: direct (no routing keys)
+    // Charlie: routed through mediator1
+    // David: routed through mediator2
+
+    // Modify DIDs to have different routing configurations
+    let bob_direct = with_routing_keys(&BOB_DID_DOC, vec![]); // No routing
+    let charlie_routed =
+        with_routing_keys(&CHARLIE_DID_DOC, vec!["did:example:mediator1".to_string()]);
+    let david_routed = with_routing_keys(&DAVID_DID_DOC, vec!["did:example:mediator2".to_string()]);
+
+    let did_resolver = ExampleDIDResolver::new(vec![
+        ALICE_DID_DOC.clone(),
+        bob_direct,
+        charlie_routed,
+        david_routed,
+        MEDIATOR1_DID_DOC.clone(),
+        MEDIATOR2_DID_DOC.clone(),
+        MEDIATOR3_DID_DOC.clone(),
+    ]);
+
+    let sender_secrets = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+
+    let message = Message::build(
+        "test-mixed-routing".to_string(),
+        "https://example.com/test".to_string(),
+        json!({"content": "mixed direct and routed"}),
+    )
+    .to(BOB_DID.to_owned())
+    .to(CHARLIE_DID.to_owned())
+    .to(DAVID_DID.to_owned())
+    .from(ALICE_DID.to_owned())
+    .finalize();
+
+    // Pack with forwarding enabled
+    let results = message
+        .pack_encrypted(
+            &[BOB_DID, CHARLIE_DID, DAVID_DID],
+            Some(ALICE_DID),
+            None,
+            &did_resolver,
+            &sender_secrets,
+            &PackEncryptedOptions {
+                forward: true,
+                ..PackEncryptedOptions::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    // Should get multiple messages: one for direct (Bob), others for routed paths
+    assert!(!results.is_empty());
+    println!(
+        "✅ Mixed routing test passed: {} message(s) generated",
+        results.len()
+    );
+}
+
+#[tokio::test]
+async fn test_multi_recipient_varying_routing_depths() {
+    // Test recipients with different routing depths
+    // Bob: 1 hop (mediator1)
+    // Charlie: 2 hops (mediator1 -> mediator2)
+    // David: 3 hops (mediator1 -> mediator2 -> mediator3)
+
+    // Create modified versions with different routing depths
+    let bob_1hop = with_routing_keys(&BOB_DID_DOC, vec!["did:example:mediator1".to_string()]);
+    let charlie_2hop = with_routing_keys(
+        &CHARLIE_DID_DOC,
+        vec![
+            "did:example:mediator1".to_string(),
+            "did:example:mediator2".to_string(),
+        ],
+    );
+    let david_3hop = DAVID_DID_DOC.clone(); // Already has 3 hops in test vectors
+
+    let did_resolver = ExampleDIDResolver::new(vec![
+        ALICE_DID_DOC.clone(),
+        bob_1hop,
+        charlie_2hop,
+        david_3hop,
+        MEDIATOR1_DID_DOC.clone(),
+        MEDIATOR2_DID_DOC.clone(),
+        MEDIATOR3_DID_DOC.clone(),
+    ]);
+
+    let sender_secrets = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+
+    let message = Message::build(
+        "test-varying-depths".to_string(),
+        "https://example.com/test".to_string(),
+        json!({"content": "varying routing depths"}),
+    )
+    .to(BOB_DID.to_owned())
+    .to(CHARLIE_DID.to_owned())
+    .to(DAVID_DID.to_owned())
+    .from(ALICE_DID.to_owned())
+    .finalize();
+
+    // Pack with forwarding enabled
+    let results = message
+        .pack_encrypted(
+            &[BOB_DID, CHARLIE_DID, DAVID_DID],
+            Some(ALICE_DID),
+            None,
+            &did_resolver,
+            &sender_secrets,
+            &PackEncryptedOptions {
+                forward: true,
+                ..PackEncryptedOptions::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    // Should handle different depths correctly
+    assert!(!results.is_empty());
+    println!(
+        "✅ Varying depths test passed: {} message(s) for different routing depths",
+        results.len()
+    );
+}
+
+#[tokio::test]
+async fn test_mediators_cannot_decrypt_content() {
+    // Security test: verify that mediators cannot decrypt the actual message content
+    // They should only be able to decrypt the forward wrapper, not the inner message
+
+    let did_resolver = ExampleDIDResolver::new(vec![
+        ALICE_DID_DOC.clone(),
+        BOB_DID_DOC.clone(),
+        MEDIATOR1_DID_DOC.clone(),
+    ]);
+
+    let sender_secrets = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+    let mediator_secrets = ExampleSecretsResolver::new((*MEDIATOR1_SECRETS).clone());
+
+    let message = Message::build(
+        "test-mediator-security".to_string(),
+        "https://example.com/test".to_string(),
+        json!({"content": "sensitive data that mediator should NOT see"}),
+    )
+    .to(BOB_DID.to_owned())
+    .from(ALICE_DID.to_owned())
+    .finalize();
+
+    // Pack with forwarding through mediator1
+    let results = message
+        .pack_encrypted(
+            &[BOB_DID],
+            Some(ALICE_DID),
+            None,
+            &did_resolver,
+            &sender_secrets,
+            &PackEncryptedOptions {
+                forward: true,
+                ..PackEncryptedOptions::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    assert!(!results.is_empty());
+    let (packed, _) = &results[0];
+
+    // Mediator can unpack the forward wrapper
+    let (mediator_msg, _) = Message::unpack(
+        packed,
+        &did_resolver,
+        &mediator_secrets,
+        &UnpackOptions::default(),
+    )
+    .await
+    .expect("Mediator should unpack forward wrapper");
+
+    // Should be a forward message type
+    assert!(
+        mediator_msg.type_.contains("forward"),
+        "Mediator should only see forward message"
+    );
+
+    // Mediator should NOT be able to see the original message content
+    assert_ne!(
+        mediator_msg.body,
+        json!({"content": "sensitive data that mediator should NOT see"}),
+        "Mediator should NOT be able to read original message body"
+    );
+
+    println!("✅ Mediator security test passed: mediator cannot decrypt content");
+}
+
+#[tokio::test]
+async fn test_multi_recipient_no_common_paths() {
+    // Test when recipients have completely different mediator chains (no optimization possible)
+    // Bob: mediator1
+    // Charlie: mediator2
+    // David: mediator3
+
+    let bob_med1 = with_routing_keys(&BOB_DID_DOC, vec!["did:example:mediator1".to_string()]);
+    let charlie_med2 =
+        with_routing_keys(&CHARLIE_DID_DOC, vec!["did:example:mediator2".to_string()]);
+    let david_med3 = with_routing_keys(&DAVID_DID_DOC, vec!["did:example:mediator3".to_string()]);
+
+    let did_resolver = ExampleDIDResolver::new(vec![
+        ALICE_DID_DOC.clone(),
+        bob_med1,
+        charlie_med2,
+        david_med3,
+        MEDIATOR1_DID_DOC.clone(),
+        MEDIATOR2_DID_DOC.clone(),
+        MEDIATOR3_DID_DOC.clone(),
+    ]);
+
+    let sender_secrets = ExampleSecretsResolver::new(ALICE_SECRETS.clone());
+
+    let message = Message::build(
+        "test-no-common".to_string(),
+        "https://example.com/test".to_string(),
+        json!({"content": "no common mediators"}),
+    )
+    .to(BOB_DID.to_owned())
+    .to(CHARLIE_DID.to_owned())
+    .to(DAVID_DID.to_owned())
+    .from(ALICE_DID.to_owned())
+    .finalize();
+
+    // Pack with forwarding enabled
+    let results = message
+        .pack_encrypted(
+            &[BOB_DID, CHARLIE_DID, DAVID_DID],
+            Some(ALICE_DID),
+            None,
+            &did_resolver,
+            &sender_secrets,
+            &PackEncryptedOptions {
+                forward: true,
+                ..PackEncryptedOptions::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    // Should create separate messages (one per routing destination)
+    // With different mediators, we expect multiple messages (typically 2-3)
+    assert!(
+        results.len() >= 2,
+        "Should create at least 2 separate messages for different mediators, got {}",
+        results.len()
+    );
+
+    println!(
+        "✅ No common paths test passed: {} separate message(s) created",
+        results.len()
+    );
 }

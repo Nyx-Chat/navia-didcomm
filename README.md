@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/License-Proprietary-red.svg)](./LICENSE)
 [![GitHub Package Registry](https://img.shields.io/badge/GitHub%20Packages-private-blue.svg)](https://github.com/nyx-chat/navia-didcomm/packages)
 [![Build Status](https://github.com/nyx-chat/navia-didcomm/workflows/PR%20Validation/badge.svg)](https://github.com/nyx-chat/navia-didcomm/actions)
-[![Tests](https://img.shields.io/badge/tests-223%20passing-green.svg)](https://github.com/nyx-chat/navia-didcomm/actions)
+[![Tests](https://img.shields.io/badge/tests-228%20passing-green.svg)](https://github.com/nyx-chat/navia-didcomm/actions)
 
 **Production-ready DIDComm v2 implementation for secure peer-to-peer messaging**
 

@@ -780,7 +780,7 @@ mod test {
 
             let (msg, pack_metadata) = MESSAGE_SIMPLE
                 .pack_encrypted(
-                    &[&to],
+                    &[to],
                     from,
                     sign_by,
                     &did_resolver,
@@ -1027,7 +1027,7 @@ mod test {
 
             let (packed, _) = msg
                 .pack_encrypted(
-                    &[&to],
+                    &[to],
                     None,
                     None,
                     &did_resolver,
