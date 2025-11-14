@@ -133,7 +133,7 @@ jobs:
         run: cargo bench --message-format json | tee benchmark-results.json || true
         
       - name: Upload benchmark results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: benchmark-results-${{ github.event.number || 'main' }}
           path: benchmark-results.json
