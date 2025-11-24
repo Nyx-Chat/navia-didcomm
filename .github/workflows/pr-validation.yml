@@ -17,7 +17,7 @@ jobs:
     name: Quick Checks
     runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-x64
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -50,7 +50,7 @@ jobs:
     runs-on: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64
     needs: quick-checks
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -87,7 +87,7 @@ jobs:
     runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-x64
     needs: quick-checks
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -115,7 +115,7 @@ jobs:
     runs-on: runs-on=${{ github.run_id }}/runner=2cpu-linux-x64
     needs: quick-checks
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
