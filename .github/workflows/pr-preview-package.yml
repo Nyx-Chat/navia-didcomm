@@ -97,7 +97,7 @@ jobs:
           ls -la target/package/*.crate
       
       - name: Upload preview package artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: pr-preview-package-${{ github.event.pull_request.number }}
           path: target/package/*.crate
