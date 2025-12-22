@@ -64,7 +64,7 @@ bs58 = "0.5.1"
 varint = "0.9.0"
 
 # Utilities
-uuid = { version = "1.18", features = ["v4"] }
+uuid = { version = "1.19", features = ["v4"] }
 
 # Optional dependencies
 lazy_static = { version = "1.5", optional = true }
