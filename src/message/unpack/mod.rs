@@ -42,14 +42,23 @@ impl Message {
     ///   trust context, algorithms and etc.
     ///
     /// # Errors
+    /// - `Malformed` Message is not a valid JWE, JWS or JWM (including empty or truncated JSON)
+    ///   or has invalid encryption or signatures. This also covers an anoncrypt envelope that
+    ///   carries `apu` or is addressed to other keys than the authcrypt inside it, a signature
+    ///   `alg` that doesn't match the signer key type, and key material (sender, signer or
+    ///   recipient secret) that can't be decoded or parsed, including a multicodec prefix
+    ///   that can't be read.
+    /// - `IllegalArgument` Multibase key material (sender, signer or recipient secret) without
+    ///   the `z` prefix, or with an unknown or wrong multicodec prefix.
+    /// - `SecretNotFound` No recipient secrets found, or a recipient secret was removed while
+    ///   unpacking.
     /// - `DIDNotResolved` Sender or recipient DID not found.
     /// - `DIDUrlNotFound` DID doesn't contain mentioned DID Urls (for ex., key id)
-    /// - `MessageMalformed` message doesn't correspond to DID Comm or has invalid encryption or signatures.
-    /// - `Unsupported` Used crypto or method is unsupported.
-    /// - `SecretNotFound` No recipient secrets found.
+    /// - `Unsupported` Used crypto or method is unsupported, including a sender or signer key
+    ///   of a type this crate doesn't support.
+    /// - `IoError` IO error during DID or secrets resolving.
+    /// - Errors returned by `did_resolver` or `secrets_resolver` keep their kind.
     /// - `InvalidState` Indicates library error.
-    /// - `IOError` IO error during DID or secrets resolving.
-    /// TODO: verify and update errors list
     pub async fn unpack<'dr, 'sr>(
         msg: &str,
         did_resolver: &'dr (dyn DIDResolver + 'dr),
@@ -260,11 +269,19 @@ async fn has_key_agreement_secret<'dr, 'sr>(
 
 #[cfg(test)]
 mod test {
+    use async_trait::async_trait;
+    use base64::prelude::*;
+    use serde_json::Value;
+
     use crate::{
-        did::resolvers::ExampleDIDResolver,
-        message::MessagingServiceMetadata,
+        did::{
+            resolvers::{ExampleDIDResolver, MockDidResolver},
+            VerificationMaterial, VerificationMethodType,
+        },
+        error::Error,
+        message::{anoncrypt as anoncrypt_payload, MessagingServiceMetadata},
         protocols::routing::wrap_in_forward,
-        secrets::resolvers::ExampleSecretsResolver,
+        secrets::{resolvers::ExampleSecretsResolver, Secret},
         test_vectors::{
             remove_field, remove_protected_field, update_field, update_protected_field,
             ALICE_AUTH_METHOD_25519, ALICE_AUTH_METHOD_P256, ALICE_AUTH_METHOD_SECPP256K1,
@@ -2155,6 +2172,292 @@ mod test {
             .await;
     }
 
+    #[tokio::test]
+    async fn unpack_works_truncated_frames() {
+        let mut frames = vec![
+            String::new(),
+            "  \n".to_string(),
+            r#"{"protected":"#.to_string(),
+        ];
+
+        for msg in [
+            ENCRYPTED_MSG_ANON_XC20P_1,
+            ENCRYPTED_MSG_AUTH_X25519,
+            SIGNED_MSG_ALICE_KEY_1,
+            PLAINTEXT_MSG_SIMPLE,
+        ] {
+            assert!(msg.is_ascii());
+            frames.push(msg[..msg.len() / 2].to_string());
+        }
+
+        for frame in frames {
+            _verify_unpack_malformed(
+                &frame,
+                "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
+            )
+            .await;
+        }
+    }
+
+    #[tokio::test]
+    async fn unpack_works_truncated_protected_header() {
+        let protected = BASE64_URL_SAFE_NO_PAD.encode(r#"{"alg":"ECDH-ES+A256KW","#);
+
+        for msg in [ENCRYPTED_MSG_ANON_XC20P_1, ENCRYPTED_MSG_AUTH_X25519] {
+            let err = _unpack_err(&update_field(msg, "protected", &protected)).await;
+
+            assert_eq!(err.kind(), ErrorKind::Malformed);
+
+            // serde_json reports the column too, so only the prefix is compared
+            let err_msg = format!("{err}");
+            assert!(
+                err_msg.starts_with(
+                    "Message malformed or invalid: Unable parse protected header: EOF while parsing"
+                ),
+                "unexpected error: {err_msg}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn unpack_works_truncated_payload_inside_anoncrypt() {
+        let did_resolver = ExampleDIDResolver::new(vec![BOB_DID_DOC.clone()]);
+
+        let (msg, _) = anoncrypt_payload(
+            &[BOB_DID],
+            &did_resolver,
+            br#"{"id":"1","typ":"#,
+            &AnonCryptAlg::default(),
+        )
+        .await
+        .expect("anoncrypt is ok");
+
+        _verify_unpack_malformed(
+            &msg,
+            "Message malformed or invalid: Message is not a valid JWE, JWS or JWM",
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn unpack_authcrypt_keeps_the_sender_resolver_error_kind() {
+        let secrets_resolver = ExampleSecretsResolver::new(BOB_SECRETS.clone());
+
+        for kind in [
+            ErrorKind::IoError,
+            ErrorKind::DIDNotResolved,
+            ErrorKind::Malformed,
+        ] {
+            // Only the sender DID is resolved, so one result is enough
+            let did_resolver = MockDidResolver::new(vec![Err(err_msg(kind, "Mock error"))]);
+
+            let err = Message::unpack(
+                ENCRYPTED_MSG_AUTH_X25519,
+                &did_resolver,
+                &secrets_resolver,
+                &UnpackOptions::default(),
+            )
+            .await
+            .expect_err("res is ok");
+
+            assert_eq!(err.kind(), kind);
+            assert_eq!(
+                format!("{err}"),
+                format!("{kind}: Unable resolve sender did: Mock error")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn unpack_works_anoncrypt_authcrypt_key_mismatch() {
+        let did_resolver = ExampleDIDResolver::new(vec![BOB_DID_DOC.clone()]);
+
+        // The authcrypt is addressed to bob's x25519 keys 1-3, the anoncrypt around it only
+        // to key 2.
+        let (msg, _) = anoncrypt_payload(
+            &[BOB_SECRET_KEY_AGREEMENT_KEY_X25519_2.id.as_str()],
+            &did_resolver,
+            ENCRYPTED_MSG_AUTH_X25519.as_bytes(),
+            &AnonCryptAlg::default(),
+        )
+        .await
+        .expect("anoncrypt is ok");
+
+        _verify_unpack_malformed(
+            &msg,
+            "Message malformed or invalid: Key mismatch between anoncrypt and authcrypt envelopes",
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn unpack_works_anoncrypt_with_apu() {
+        _verify_unpack_malformed(
+            &update_protected_field(
+                ENCRYPTED_MSG_ANON_XC20P_1,
+                "apu",
+                &BASE64_URL_SAFE_NO_PAD.encode("did:example:alice#key-x25519-1"),
+            ),
+            "Message malformed or invalid: apu present in anoncrypt envelope",
+        )
+        .await;
+    }
+
+    /// Reports every requested key as present, then finds none of them: a key store whose
+    /// key is removed between `find_secrets` and `get_secret`.
+    struct VanishingSecrets;
+
+    #[async_trait]
+    impl SecretsResolver for VanishingSecrets {
+        async fn get_secret(&self, _secret_id: &str) -> Result<Option<Secret>> {
+            Ok(None)
+        }
+
+        async fn find_secrets<'a>(&self, secret_ids: &'a [&'a str]) -> Result<Vec<&'a str>> {
+            Ok(secret_ids.to_vec())
+        }
+    }
+
+    #[tokio::test]
+    async fn unpack_works_recipient_secret_removed_after_find() {
+        let did_resolver = ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone()]);
+
+        for msg in [ENCRYPTED_MSG_ANON_XC20P_1, ENCRYPTED_MSG_AUTH_X25519] {
+            let err = Message::unpack(
+                msg,
+                &did_resolver,
+                &VanishingSecrets,
+                &UnpackOptions::default(),
+            )
+            .await
+            .expect_err("res is ok");
+
+            assert_eq!(err.kind(), ErrorKind::SecretNotFound);
+            assert_eq!(
+                format!("{err}"),
+                "Secret not found: Recipient secret not found after existence checking"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn unpack_works_signed_alg_key_mismatch() {
+        // alice#key-1 is Ed25519, the protected header is changed to claim ES256
+        let mut msg: Value = serde_json::from_str(SIGNED_MSG_ALICE_KEY_1).unwrap();
+
+        let protected = msg["signatures"][0]["protected"].as_str().unwrap();
+        let mut protected: Value =
+            serde_json::from_slice(&BASE64_URL_SAFE_NO_PAD.decode(protected).unwrap()).unwrap();
+        protected["alg"] = "ES256".into();
+
+        msg["signatures"][0]["protected"] =
+            BASE64_URL_SAFE_NO_PAD.encode(protected.to_string()).into();
+
+        _verify_unpack_malformed(
+            &msg.to_string(),
+            "Message malformed or invalid: Signature alg does not match signer key type",
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn unpack_works_authcrypt_oversized_tag() {
+        // 124 bytes is the longest tag ECDH-1PU key derivation accepts, so it gets as far as
+        // unwrapping the cek.
+        let err = _unpack_err(&update_field(
+            ENCRYPTED_MSG_AUTH_X25519,
+            "tag",
+            &BASE64_URL_SAFE_NO_PAD.encode([0u8; 124]),
+        ))
+        .await;
+
+        assert_eq!(err.kind(), ErrorKind::Malformed);
+        assert!(
+            format!("{err}").starts_with("Message malformed or invalid: Unable unwrap cek"),
+            "unexpected error: {err}"
+        );
+
+        for len in [125, 128, 129] {
+            let err = _unpack_err(&update_field(
+                ENCRYPTED_MSG_AUTH_X25519,
+                "tag",
+                &BASE64_URL_SAFE_NO_PAD.encode(vec![0u8; len]),
+            ))
+            .await;
+
+            assert_eq!(err.kind(), ErrorKind::Malformed, "tag of {len} bytes");
+            assert_eq!(
+                format!("{err}"),
+                "Message malformed or invalid: Tag too long",
+                "tag of {len} bytes"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn unpack_works_signed_unsupported_signer_key_type() {
+        // alice#key-3 keeps its secp256k1 JWK, but under a verification method type this
+        // crate doesn't support. The ES256K signature itself is valid.
+        let mut alice_did_doc = ALICE_DID_DOC.clone();
+        alice_did_doc
+            .verification_method
+            .iter_mut()
+            .find(|vm| vm.id == ALICE_AUTH_METHOD_SECPP256K1.id)
+            .unwrap()
+            .type_ = VerificationMethodType::EcdsaSecp256k1VerificationKey2019;
+
+        let did_resolver = ExampleDIDResolver::new(vec![alice_did_doc]);
+        let secrets_resolver = ExampleSecretsResolver::new(BOB_SECRETS.clone());
+
+        let err = Message::unpack(
+            SIGNED_MSG_ALICE_KEY_3,
+            &did_resolver,
+            &secrets_resolver,
+            &UnpackOptions::default(),
+        )
+        .await
+        .expect_err("res is ok");
+
+        assert_eq!(err.kind(), ErrorKind::Unsupported);
+        assert_eq!(
+            format!("{err}"),
+            "Unsupported cryptographic algorithm or method: Unsupported signer key type"
+        );
+    }
+
+    #[tokio::test]
+    async fn unpack_works_authcrypt_sender_multibase_without_z_prefix() {
+        // The sender key as a multibase value that picked up JSON quotes on the way.
+        let mut alice_did_doc = ALICE_DID_DOC.clone();
+        let sender_key = alice_did_doc
+            .verification_method
+            .iter_mut()
+            .find(|vm| vm.id == ALICE_VERIFICATION_METHOD_KEY_AGREEM_X25519.id)
+            .unwrap();
+        sender_key.type_ = VerificationMethodType::X25519KeyAgreementKey2020;
+        sender_key.verification_material = VerificationMaterial::Multibase {
+            public_key_multibase: "\"z6LSbysY2xFMRpGMhb7tFTLMpeuPRaqaWM1yECx2AtzE3KCc\"".into(),
+        };
+
+        let did_resolver = ExampleDIDResolver::new(vec![alice_did_doc, BOB_DID_DOC.clone()]);
+        let secrets_resolver = ExampleSecretsResolver::new(BOB_SECRETS.clone());
+
+        let err = Message::unpack(
+            ENCRYPTED_MSG_AUTH_X25519,
+            &did_resolver,
+            &secrets_resolver,
+            &UnpackOptions::default(),
+        )
+        .await
+        .expect_err("res is ok");
+
+        assert_eq!(err.kind(), ErrorKind::IllegalArgument);
+        assert_eq!(
+            format!("{err}"),
+            "Illegal argument provided: Multibase value must start with 'z'"
+        );
+    }
+
     async fn _verify_unpack(msg: &str, exp_msg: &Message, exp_metadata: &UnpackMetadata) {
         let did_resolver = ExampleDIDResolver::new(vec![
             ALICE_DID_DOC.clone(),
@@ -2211,6 +2514,13 @@ mod test {
     }
 
     async fn _verify_unpack_returns_error(msg: &str, exp_err_kind: ErrorKind, exp_err_msg: &str) {
+        let err = _unpack_err(msg).await;
+
+        assert_eq!(err.kind(), exp_err_kind);
+        assert_eq!(format!("{err}"), exp_err_msg);
+    }
+
+    async fn _unpack_err(msg: &str) -> Error {
         let did_resolver = ExampleDIDResolver::new(vec![
             ALICE_DID_DOC.clone(),
             BOB_DID_DOC.clone(),
@@ -2219,16 +2529,13 @@ mod test {
 
         let secrets_resolver = ExampleSecretsResolver::new(BOB_SECRETS.clone());
 
-        let err = Message::unpack(
+        Message::unpack(
             msg,
             &did_resolver,
             &secrets_resolver,
             &UnpackOptions::default(),
         )
         .await
-        .expect_err("res is ok");
-
-        assert_eq!(err.kind(), exp_err_kind);
-        assert_eq!(format!("{err}"), exp_err_msg);
+        .expect_err("res is ok")
     }
 }

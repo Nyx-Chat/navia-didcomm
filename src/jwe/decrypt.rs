@@ -56,6 +56,13 @@ impl<'a, 'b> ParsedJWE<'a, 'b> {
             .decode(self.jwe.tag)
             .kind(ErrorKind::Malformed, "Unable decode tag")?;
 
+        // ECDH-1PU feeds the tag into key derivation, which writes it after 8 bytes of
+        // length fields into a 132-byte buffer, so a tag over 124 bytes fails there.
+        // No supported content encryption produces a tag that long.
+        if tag.len() > 124 {
+            Err(err_msg(ErrorKind::Malformed, "Tag too long"))?
+        }
+
         let kw = KDF::derive_key(
             &epk,
             skey,

@@ -11,7 +11,7 @@ use crate::jwe::envelope::JWE;
 use crate::{
     algorithms::AuthCryptAlg,
     did::DIDResolver,
-    error::{err_msg, ErrorKind, Result, ResultExt},
+    error::{err_msg, ErrorKind, Result, ResultContext, ResultExt},
     jwe,
     secrets::SecretsResolver,
     utils::{
@@ -63,7 +63,7 @@ pub(crate) async fn _try_unpack_authcrypt<'dr, 'sr>(
     let from_ddoc = did_resolver
         .resolve(from_did)
         .await
-        .kind(ErrorKind::InvalidState, "Unable resolve sender did")?
+        .context("Unable resolve sender did")?
         .ok_or_else(|| err_msg(ErrorKind::DIDNotResolved, "Sender did not found"))?;
 
     let from_kid = from_ddoc
@@ -92,24 +92,19 @@ pub(crate) async fn _try_unpack_authcrypt<'dr, 'sr>(
         .collect();
 
     // Store all recipient keys in metadata for multi-recipient support
-    if metadata.encrypted_to_kids.is_none() {
-        metadata.encrypted_to_kids = Some(all_to_kids.iter().map(|&k| k.to_owned()).collect());
-    } else {
+    if let Some(existing_kids) = &metadata.encrypted_to_kids {
         // Verify that same keys used for authcrypt as for anoncrypt envelope
-        let existing_kids: std::collections::HashSet<&str> = metadata
-            .encrypted_to_kids
-            .as_ref()
-            .unwrap()
-            .iter()
-            .map(|s| s.as_str())
-            .collect();
+        let existing_kids: std::collections::HashSet<&str> =
+            existing_kids.iter().map(|s| s.as_str()).collect();
         let new_kids: std::collections::HashSet<&str> = all_to_kids.iter().copied().collect();
         if existing_kids != new_kids {
             return Err(err_msg(
-                ErrorKind::InvalidState,
+                ErrorKind::Malformed,
                 "Key mismatch between anoncrypt and authcrypt envelopes",
             ));
         }
+    } else {
+        metadata.encrypted_to_kids = Some(all_to_kids.iter().map(|&k| k.to_owned()).collect());
     }
 
     // Find which keys belong to the current unpacker (multi-recipient support)
@@ -156,7 +151,7 @@ pub(crate) async fn _try_unpack_authcrypt<'dr, 'sr>(
             .await?
             .ok_or_else(|| {
                 err_msg(
-                    ErrorKind::InvalidState,
+                    ErrorKind::SecretNotFound,
                     "Recipient secret not found after existence checking",
                 )
             })?

@@ -2,7 +2,11 @@ use crate::{
     did::DIDResolver,
     error::{err_msg, ErrorKind, Result, ResultContext, ResultExt},
     jws,
-    utils::{crypto::AsKnownKeyPair, did::did_or_url, secure_cmp::secure_string_eq},
+    utils::{
+        crypto::{AsKnownKeyPair, KnownKeyAlg},
+        did::did_or_url,
+        secure_cmp::secure_string_eq,
+    },
     FromPrior,
 };
 use askar_crypto::alg::{ed25519::Ed25519KeyPair, k256::K256KeyPair, p256::P256KeyPair};
@@ -85,6 +89,21 @@ impl FromPrior {
                 )
             })?;
 
+        // alg comes from the JWT header and the key type from the issuer's DID document,
+        // so a mismatch between them is a fault of the JWT. An issuer key of a type this
+        // crate doesn't support is not, whatever alg the JWT names.
+        match (alg.key_alg(), key.key_alg()) {
+            (Some(_), KnownKeyAlg::Unsupported) => Err(err_msg(
+                ErrorKind::Unsupported,
+                "Unsupported from_prior issuer key type",
+            ))?,
+            (Some(expected), actual) if expected != actual => Err(err_msg(
+                ErrorKind::Malformed,
+                "from_prior alg does not match issuer key type",
+            ))?,
+            _ => {}
+        }
+
         let valid = match alg {
             jws::Algorithm::EdDSA => {
                 let key = key
@@ -142,8 +161,11 @@ impl FromPrior {
 
 #[cfg(test)]
 mod tests {
+    use base64::prelude::*;
+    use serde_json::Value;
+
     use crate::{
-        did::resolvers::ExampleDIDResolver,
+        did::{resolvers::ExampleDIDResolver, VerificationMaterial},
         error::ErrorKind,
         test_vectors::{
             ALICE_DID_DOC, CHARLIE_AUTH_METHOD_25519, CHARLIE_DID_DOC, FROM_PRIOR_FULL,
@@ -192,5 +214,59 @@ mod tests {
 
         assert_eq!(err.kind(), ErrorKind::Malformed);
         assert_eq!(format!("{err}"), "Message malformed or invalid: Unable to verify from_prior signature: Unable decode signature: Invalid last symbol 66, offset 85.");
+    }
+
+    #[tokio::test]
+    async fn from_prior_unpack_works_alg_key_mismatch() {
+        let did_resolver =
+            ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), CHARLIE_DID_DOC.clone()]);
+
+        // The issuer key (charlie#key-1) is Ed25519, the header claims ES256.
+        let (header, rest) = FROM_PRIOR_JWT_FULL.split_once('.').unwrap();
+        let mut header: Value =
+            serde_json::from_slice(&BASE64_URL_SAFE_NO_PAD.decode(header).unwrap()).unwrap();
+        header["alg"] = "ES256".into();
+        let jwt = format!(
+            "{}.{rest}",
+            BASE64_URL_SAFE_NO_PAD.encode(header.to_string())
+        );
+
+        let err = FromPrior::unpack(&jwt, &did_resolver)
+            .await
+            .expect_err("res is ok");
+
+        assert_eq!(err.kind(), ErrorKind::Malformed);
+        assert_eq!(
+            format!("{err}"),
+            "Message malformed or invalid: from_prior alg does not match issuer key type"
+        );
+    }
+
+    #[tokio::test]
+    async fn from_prior_unpack_works_unsupported_issuer_key_type() {
+        // An Ed448 issuer key fits the EdDSA alg of the JWT, but this crate can't verify with it.
+        let mut charlie_did_doc = CHARLIE_DID_DOC.clone();
+        let issuer_key = charlie_did_doc
+            .verification_method
+            .iter_mut()
+            .find(|vm| vm.id == CHARLIE_AUTH_METHOD_25519.id)
+            .unwrap();
+        let VerificationMaterial::JWK { public_key_jwk } = &mut issuer_key.verification_material
+        else {
+            panic!("charlie#key-1 is not a JWK");
+        };
+        public_key_jwk["crv"] = "Ed448".into();
+
+        let did_resolver = ExampleDIDResolver::new(vec![ALICE_DID_DOC.clone(), charlie_did_doc]);
+
+        let err = FromPrior::unpack(FROM_PRIOR_JWT_FULL, &did_resolver)
+            .await
+            .expect_err("res is ok");
+
+        assert_eq!(err.kind(), ErrorKind::Unsupported);
+        assert_eq!(
+            format!("{err}"),
+            "Unsupported cryptographic algorithm or method: Unsupported from_prior issuer key type"
+        );
     }
 }
