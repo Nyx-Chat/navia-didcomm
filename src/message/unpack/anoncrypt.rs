@@ -41,6 +41,15 @@ pub(crate) async fn _try_unpack_anoncrypt<'sr>(
 
     let parsed_jwe = parsed_jwe.verify_didcomm()?;
 
+    // apu names the sender key, which anoncrypt does not have. Reject it here, before any
+    // key lookup, as a fault of the envelope rather than letting decrypt fail on it later.
+    if parsed_jwe.apu.is_some() {
+        Err(err_msg(
+            ErrorKind::Malformed,
+            "apu present in anoncrypt envelope",
+        ))?;
+    }
+
     let all_to_kids: Vec<&str> = parsed_jwe
         .jwe
         .recipients
@@ -93,7 +102,7 @@ pub(crate) async fn _try_unpack_anoncrypt<'sr>(
             .await?
             .ok_or_else(|| {
                 err_msg(
-                    ErrorKind::InvalidState,
+                    ErrorKind::SecretNotFound,
                     "Recipient secret not found after existence checking",
                 )
             })?

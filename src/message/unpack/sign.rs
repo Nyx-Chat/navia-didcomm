@@ -7,7 +7,10 @@ use crate::{
     did::DIDResolver,
     error::{err_msg, ErrorKind, Result, ResultContext, ResultExt},
     jws,
-    utils::{crypto::AsKnownKeyPair, did::did_or_url},
+    utils::{
+        crypto::{AsKnownKeyPair, KnownKeyAlg},
+        did::did_or_url,
+    },
     UnpackMetadata, UnpackOptions,
 };
 
@@ -91,6 +94,21 @@ pub(crate) async fn _try_unpack_sign<'dr>(
                 "Sender verification method not found in did",
             )
         })?;
+
+    // alg comes from the frame and the key type from the signer's DID document,
+    // so a mismatch between them is a fault of the frame. A signer key of a type
+    // this crate doesn't support is not, whatever alg the frame names.
+    match (alg.key_alg(), signer_key.key_alg()) {
+        (Some(_), KnownKeyAlg::Unsupported) => Err(err_msg(
+            ErrorKind::Unsupported,
+            "Unsupported signer key type",
+        ))?,
+        (Some(expected), actual) if expected != actual => Err(err_msg(
+            ErrorKind::Malformed,
+            "Signature alg does not match signer key type",
+        ))?,
+        _ => {}
+    }
 
     let valid = match alg {
         jws::Algorithm::EdDSA => {

@@ -4,6 +4,7 @@ use serde_enum_str::{Deserialize_enum_str, Serialize_enum_str};
 use std::borrow::Cow;
 
 use crate::error::{err_msg, ErrorKind, Result};
+use crate::utils::crypto::KnownKeyAlg;
 
 /// Subset of JWS in generic json serialization used for signed message type.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -94,6 +95,17 @@ impl Algorithm {
         };
 
         Ok(sig_type)
+    }
+
+    /// Key type that verifies a signature made with this algorithm,
+    /// or `None` for an unsupported algorithm.
+    pub(crate) fn key_alg(&self) -> Option<KnownKeyAlg> {
+        match self {
+            Algorithm::EdDSA => Some(KnownKeyAlg::Ed25519),
+            Algorithm::Es256 => Some(KnownKeyAlg::P256),
+            Algorithm::Es256K => Some(KnownKeyAlg::K256),
+            Algorithm::Other(_) => None,
+        }
     }
 }
 

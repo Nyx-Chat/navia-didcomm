@@ -517,7 +517,7 @@ fn _from_multicodec(value: &[u8]) -> Result<(Codec, &[u8])> {
     let mut val: Cursor<Vec<u8>> = Cursor::new(value.to_owned());
     let prefix_int = val
         .read_unsigned_varint_32()
-        .kind(ErrorKind::InvalidState, "Cannot read varint")?;
+        .kind(ErrorKind::Malformed, "Cannot read varint")?;
     let codec = Codec::codec_by_prefix(prefix_int)?;
 
     let mut prefix: Cursor<Vec<u8>> = Cursor::new(Vec::new());
@@ -531,6 +531,7 @@ fn _from_multicodec(value: &[u8]) -> Result<(Codec, &[u8])> {
 #[cfg(test)]
 mod tests {
     use crate::did::{VerificationMaterial, VerificationMethod, VerificationMethodType};
+    use crate::error::ErrorKind;
     use crate::jwk::FromJwkValue;
     use crate::secrets::{Secret, SecretMaterial, SecretType};
     use crate::utils::crypto::{AsKnownKeyPair, KnownKeyPair};
@@ -724,6 +725,35 @@ mod tests {
         .map(KnownKeyPair::Ed25519)
         .unwrap();
         assert_eq!(format!("{actual_key:?}"), format!("{:?}", expected_key));
+    }
+
+    #[test]
+    fn verification_method_with_truncated_multicodec_is_malformed() {
+        // An empty multicodec prefix, and a lone byte with the continuation bit set. Keep
+        // these at 5 continuation bytes or fewer: varint 0.9.0 overflows its shift on a
+        // 6th byte and panics in debug builds.
+        for multibase in [
+            "z".to_string(),
+            format!("z{}", bs58::encode([0xecu8]).into_string()),
+        ] {
+            let err = VerificationMethod {
+                id: "did:example:eve#key-x25519-1".to_string(),
+                type_: VerificationMethodType::X25519KeyAgreementKey2020,
+                controller: "did:example:eve#key-x25519-1".to_string(),
+                verification_material: VerificationMaterial::Multibase {
+                    public_key_multibase: multibase.clone(),
+                },
+            }
+            .as_key_pair()
+            .unwrap_err();
+
+            assert_eq!(err.kind(), ErrorKind::Malformed, "multibase {multibase}");
+            assert_eq!(
+                format!("{err}"),
+                "Message malformed or invalid: Cannot read varint: Could not read one byte (end of stream?)",
+                "multibase {multibase}"
+            );
+        }
     }
 
     #[test]

@@ -499,7 +499,9 @@ impl<T> ToResult<T> for bs58::encode::Result<T> {
 impl From<serde_json::Error> for Error {
     fn from(err: serde_json::Error) -> Self {
         match err.classify() {
-            Category::Io | Category::Eof => Error::msg(ErrorKind::InvalidState, err.to_string()),
+            Category::Io => Error::msg(ErrorKind::InvalidState, err.to_string()),
+            // Eof is input that ends early, such as an empty or cut-off frame, so it is
+            // malformed input just like a syntax or data error.
             _ => Error::msg(ErrorKind::Malformed, err.to_string()),
         }
     }
@@ -527,4 +529,53 @@ where
     D: fmt::Display + fmt::Debug + Send + Sync + 'static,
 {
     Error::msg(kind, msg)
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{error::Category, Value};
+
+    use super::{Error, ErrorKind};
+
+    #[test]
+    fn serde_eof_is_malformed() {
+        for input in ["", "   ", r#"{"a":"#] {
+            let err = serde_json::from_str::<Value>(input).unwrap_err();
+            assert_eq!(err.classify(), Category::Eof, "input {input:?}");
+            assert_eq!(
+                Error::from(err).kind(),
+                ErrorKind::Malformed,
+                "input {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn serde_syntax_and_data_stay_malformed() {
+        let err = serde_json::from_str::<Value>("{not json").unwrap_err();
+        assert_eq!(err.classify(), Category::Syntax);
+        assert_eq!(Error::from(err).kind(), ErrorKind::Malformed);
+
+        let err = serde_json::from_str::<u8>("\"x\"").unwrap_err();
+        assert_eq!(err.classify(), Category::Data);
+        assert_eq!(Error::from(err).kind(), ErrorKind::Malformed);
+    }
+
+    #[test]
+    fn serde_io_stays_invalid_state() {
+        struct FailingReader;
+
+        impl std::io::Read for FailingReader {
+            fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "read failed",
+                ))
+            }
+        }
+
+        let err = serde_json::from_reader::<_, Value>(FailingReader).unwrap_err();
+        assert_eq!(err.classify(), Category::Io);
+        assert_eq!(Error::from(err).kind(), ErrorKind::InvalidState);
+    }
 }
