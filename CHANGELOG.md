@@ -1,3 +1,9 @@
+## [1.3.1](https://github.com/Nyx-Chat/navia-didcomm/compare/v1.3.0...v1.3.1) (2026-09-30)
+
+### 🐛 Bug Fixes
+
+* report frame faults on unpack as Malformed or SecretNotFound ([fdf73c1](https://github.com/Nyx-Chat/navia-didcomm/commit/fdf73c1782182a548d24cedf638e97ec37989dab))
+
 ## [1.3.0](https://github.com/Nyx-Chat/navia-didcomm/compare/v1.2.0...v1.3.0) (2025-11-14)
 
 ### ⚠ BREAKING CHANGES
