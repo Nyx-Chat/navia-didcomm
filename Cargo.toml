@@ -55,7 +55,7 @@ serde-enum-str = "0.4"
 
 # Cryptography
 askar-crypto = { version = "0.3.7", features = ["std", "k256", "p384"] }
-sha2 = "0.10"
+sha2 = "0.11"
 subtle = "2.6"
 
 # Encoding
