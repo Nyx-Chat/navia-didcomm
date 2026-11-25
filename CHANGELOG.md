@@ -1,3 +1,17 @@
+## [2.0.0](https://github.com/Nyx-Chat/navia-didcomm/compare/v1.4.0...v2.0.0) (2026-11-25)
+
+### ⚠ BREAKING CHANGES
+
+* the 1.4.0 wire (proven senders, sealed forwards,
+message lifetimes) is released as 2.0.0.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01HFpNaDVEvzCzcarHY9sQLP
+
+### 🐛 Bug Fixes
+
+* release a breaking change as a major version ([ebf8e97](https://github.com/Nyx-Chat/navia-didcomm/commit/ebf8e971e69f5fba4c5f3ba80c60aea3254930b3))
+
 ## [1.4.0](https://github.com/Nyx-Chat/navia-didcomm/compare/v1.3.1...v1.4.0) (2026-11-25)
 
 ### ⚠ BREAKING CHANGES
