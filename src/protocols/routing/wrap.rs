@@ -31,6 +31,11 @@ pub struct WrappedMessage {
 
     /// The recipient DIDs that will ultimately receive this message
     pub final_recipients: Vec<String>,
+
+    /// IDs of the forward messages that wrap the message, outermost (the one the first
+    /// mediator opens) first. Empty when the message is not wrapped. For a routing-multi
+    /// message only the outermost forward is listed.
+    pub forward_ids: Vec<String>,
 }
 
 /// Wraps a multi-recipient encrypted message using the routing tree for optimal delivery.
@@ -67,6 +72,7 @@ pub async fn wrap_with_routing_tree<'dr>(
                 .iter()
                 .map(|p| p.recipient_did.clone())
                 .collect(),
+            forward_ids: Vec::new(),
         });
     }
 
@@ -103,7 +109,7 @@ async fn wrap_route_group<'dr>(
 ) -> Result<Vec<WrappedMessage>> {
     // If all recipients have identical routes, simple case
     if group.has_identical_routes() {
-        let wrapped = wrap_for_mediator_chain(
+        let (wrapped, forward_ids) = wrap_for_mediator_chain(
             encrypted_msg,
             &group.recipients,
             &group.common_suffix,
@@ -118,6 +124,7 @@ async fn wrap_route_group<'dr>(
             service_endpoint: group.service_endpoint.clone(),
             service_id: group.service_id.clone(),
             final_recipients: group.recipients.clone(),
+            forward_ids,
         }]);
     }
 
@@ -138,7 +145,7 @@ async fn wrap_route_group<'dr>(
     // SUFFIX-BASED (original algorithm)
     // Complex case: recipients have divergent paths
     // 1. First, wrap for the common suffix
-    let common_wrapped = if !group.common_suffix.is_empty() {
+    let (common_wrapped, common_forward_ids) = if !group.common_suffix.is_empty() {
         wrap_for_mediator_chain(
             encrypted_msg,
             &group.recipients,
@@ -149,7 +156,7 @@ async fn wrap_route_group<'dr>(
         )
         .await?
     } else {
-        encrypted_msg.to_owned()
+        (encrypted_msg.to_owned(), Vec::new())
     };
 
     // 2. Group recipients by their individual path prefix
@@ -172,10 +179,11 @@ async fn wrap_route_group<'dr>(
                 service_endpoint: group.service_endpoint.clone(),
                 service_id: group.service_id.clone(),
                 final_recipients: recipients,
+                forward_ids: common_forward_ids.clone(),
             });
         } else {
             // Wrap the common message with this path's prefix
-            let branch_wrapped = wrap_for_mediator_chain(
+            let (branch_wrapped, mut forward_ids) = wrap_for_mediator_chain(
                 &common_wrapped,
                 &recipients,
                 &path_prefix,
@@ -184,6 +192,7 @@ async fn wrap_route_group<'dr>(
                 did_resolver,
             )
             .await?;
+            forward_ids.extend(common_forward_ids.iter().cloned());
 
             // The endpoint for this branch is determined by the first mediator in the prefix
             // For now, use the group's endpoint (this could be optimized further)
@@ -192,6 +201,7 @@ async fn wrap_route_group<'dr>(
                 service_endpoint: group.service_endpoint.clone(),
                 service_id: group.service_id.clone(),
                 final_recipients: recipients,
+                forward_ids,
             });
         }
     }
@@ -276,6 +286,7 @@ async fn wrap_prefix_based_group<'dr>(
                     did_resolver,
                 )
                 .await?
+                .0
             } else if !remaining_paths.is_empty() {
                 // Complex case: recipients have divergent remaining paths
                 // We need to recursively create a routing structure for the next level
@@ -340,7 +351,7 @@ async fn wrap_prefix_based_group<'dr>(
         }
 
         // Build the routing-multi forward message with all attachments
-        let (fwd_mod_msg, _) =
+        let (fwd_mod_msg, fwd_mod_id) =
             build_forward_message_multi(next_destinations, encrypted_attachments, headers)
                 .context("Failed to build routing-multi forward message")?;
 
@@ -363,6 +374,7 @@ async fn wrap_prefix_based_group<'dr>(
             service_endpoint: group.service_endpoint.clone(),
             service_id: group.service_id.clone(),
             final_recipients: group.recipients.clone(),
+            forward_ids: vec![fwd_mod_id],
         }]);
     }
 
@@ -379,7 +391,7 @@ async fn wrap_prefix_based_group<'dr>(
             .unwrap_or_default();
 
         // Wrap the encrypted message for the remaining path
-        let wrapped_for_path = wrap_for_mediator_chain(
+        let (wrapped_for_path, inner_forward_ids) = wrap_for_mediator_chain(
             encrypted_msg,
             &recipients_for_hop,
             &remaining_path,
@@ -399,8 +411,11 @@ async fn wrap_prefix_based_group<'dr>(
         };
 
         // Build standard forward message pointing to where it goes after next_hop decrypts
-        let (fwd_msg, _) = build_forward_message(&wrapped_for_path, forward_to, headers)
+        let (fwd_msg, fwd_id) = build_forward_message(&wrapped_for_path, forward_to, headers)
             .context("Failed to build forward message")?;
+        let forward_ids = std::iter::once(fwd_id)
+            .chain(inner_forward_ids)
+            .collect::<Vec<_>>();
 
         // Encrypt for the next hop mediator (who will decrypt and forward)
         let encrypted_fwd = anoncrypt(
@@ -418,6 +433,7 @@ async fn wrap_prefix_based_group<'dr>(
             service_endpoint: group.service_endpoint.clone(),
             service_id: group.service_id.clone(),
             final_recipients: recipients_for_hop,
+            forward_ids,
         });
     }
 
@@ -482,7 +498,8 @@ async fn wrap_divergent_paths<'dr>(
                 enc_alg_anon,
                 did_resolver,
             )
-            .await?;
+            .await?
+            .0;
 
             // Build forward message pointing to where it should go AFTER next_hop decrypts
             // If there are more mediators in the remaining path, point to the first one
@@ -530,7 +547,7 @@ async fn wrap_divergent_paths<'dr>(
         // Fallback: just wrap for the first recipient's path
         // This shouldn't happen often, but provides a safe fallback
         let (recipient, remaining_path) = &remaining_paths[0];
-        wrap_for_mediator_chain(
+        Ok(wrap_for_mediator_chain(
             encrypted_msg,
             std::slice::from_ref(recipient),
             remaining_path,
@@ -538,7 +555,8 @@ async fn wrap_divergent_paths<'dr>(
             enc_alg_anon,
             did_resolver,
         )
-        .await
+        .await?
+        .0)
     }
 }
 
@@ -546,6 +564,8 @@ async fn wrap_divergent_paths<'dr>(
 ///
 /// Takes a message and wraps it in forward messages for each mediator in the chain,
 /// working from last to first (inside-out wrapping).
+///
+/// Returns the wrapped message and the IDs of its forward messages, outermost first.
 async fn wrap_for_mediator_chain<'dr>(
     msg: &str,
     recipients: &[String],
@@ -553,27 +573,28 @@ async fn wrap_for_mediator_chain<'dr>(
     headers: Option<&HashMap<String, Value>>,
     enc_alg_anon: &AnonCryptAlg,
     did_resolver: &'dr (dyn DIDResolver + 'dr),
-) -> Result<String> {
+) -> Result<(String, Vec<String>)> {
     if mediators.is_empty() {
-        return Ok(msg.to_owned());
+        return Ok((msg.to_owned(), Vec::new()));
     }
 
     let mut current_msg = msg.to_owned();
     let mut next_hop = recipients.first().unwrap().clone(); // The ultimate destination
+    let mut forward_ids = Vec::with_capacity(mediators.len());
 
     // Work backwards through the mediator chain (last to first)
     // This creates nested forward messages
     for mediator in mediators.iter().rev() {
         // Build forward message pointing to the next hop
-        current_msg = build_forward_message(&current_msg, &next_hop, headers)
-            .context("Failed to build forward message")?
-            .0; // Take only the message, ignore message_id
+        let (forward_msg, forward_id) = build_forward_message(&current_msg, &next_hop, headers)
+            .context("Failed to build forward message")?;
+        forward_ids.push(forward_id);
 
         // Encrypt for this mediator
         current_msg = anoncrypt(
             &[mediator.as_str()],
             did_resolver,
-            current_msg.as_bytes(),
+            forward_msg.as_bytes(),
             enc_alg_anon,
         )
         .await
@@ -584,7 +605,10 @@ async fn wrap_for_mediator_chain<'dr>(
         next_hop = mediator.clone();
     }
 
-    Ok(current_msg)
+    // The loop built the innermost forward first.
+    forward_ids.reverse();
+
+    Ok((current_msg, forward_ids))
 }
 
 #[cfg(test)]

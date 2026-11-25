@@ -76,7 +76,7 @@ mod tests {
         error::ErrorKind,
         secrets::resolvers::ExampleSecretsResolver,
         test_vectors::{
-            ALICE_DID_DOC, BOB_DID_DOC, BOB_SECRETS, CHARLIE_DID_DOC,
+            fixture_unpack_options, ALICE_DID_DOC, BOB_DID_DOC, BOB_SECRETS, CHARLIE_DID_DOC,
             CHARLIE_SECRET_AUTH_KEY_ED25519, FROM_PRIOR_FULL, MESSAGE_ATTACHMENT_BASE64,
             MESSAGE_ATTACHMENT_JSON, MESSAGE_ATTACHMENT_LINKS, MESSAGE_ATTACHMENT_MULTI_1,
             MESSAGE_ATTACHMENT_MULTI_2, MESSAGE_FROM_PRIOR_FULL,
@@ -85,7 +85,7 @@ mod tests {
             PLAINTEXT_MSG_ATTACHMENT_LINKS, PLAINTEXT_MSG_ATTACHMENT_MULTI_1,
             PLAINTEXT_MSG_ATTACHMENT_MULTI_2, PLAINTEXT_MSG_MINIMAL, PLAINTEXT_MSG_SIMPLE,
         },
-        Message, UnpackOptions,
+        FromPrior, Message,
     };
 
     #[tokio::test]
@@ -138,21 +138,29 @@ mod tests {
             .await
             .expect("Unable pack_plaintext");
 
-        let (unpacked_msg, unpack_metadata) = Message::unpack(
+        // The plaintext carries the signed rotation, which names Charlie as the issuer.
+        let parsed_msg = Message::from_str(&packed_msg).expect("Unable parse plaintext");
+        assert_eq!(&parsed_msg, &*MESSAGE_FROM_PRIOR_FULL);
+
+        let (from_prior, from_prior_issuer_kid) = FromPrior::unpack(
+            parsed_msg.from_prior.as_deref().expect("from_prior"),
+            &did_resolver,
+        )
+        .await
+        .expect("Unable unpack from_prior");
+        assert_eq!(&from_prior, &*FROM_PRIOR_FULL);
+        assert_eq!(from_prior_issuer_kid, CHARLIE_SECRET_AUTH_KEY_ED25519.id);
+
+        // A plaintext message has no sender that unpack can prove.
+        let err = Message::unpack(
             &packed_msg,
             &did_resolver,
             &bob_secrets_resolver,
-            &UnpackOptions::default(),
+            &fixture_unpack_options(),
         )
         .await
-        .expect("Unable unpack");
-
-        assert_eq!(&unpacked_msg, &*MESSAGE_FROM_PRIOR_FULL);
-        assert_eq!(
-            unpack_metadata.from_prior_issuer_kid.as_ref(),
-            Some(&CHARLIE_SECRET_AUTH_KEY_ED25519.id)
-        );
-        assert_eq!(unpack_metadata.from_prior.as_ref(), Some(&*FROM_PRIOR_FULL));
+        .expect_err("plaintext is not accepted");
+        assert_eq!(err.kind(), ErrorKind::SenderNotProven);
     }
 
     #[tokio::test]

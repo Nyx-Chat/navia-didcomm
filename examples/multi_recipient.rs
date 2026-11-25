@@ -18,6 +18,14 @@ use navia_didcomm::{
 use serde_json::json;
 use test_vectors::{ALICE_DID, ALICE_DID_DOC, ALICE_SECRETS, BOB_DID, BOB_DID_DOC, BOB_SECRETS};
 
+/// Seconds since the Unix epoch, for the time fields of the messages.
+fn now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock is after the epoch")
+        .as_secs()
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     println!("=================== MULTI-RECIPIENT ENCRYPTION ===================\n");
@@ -50,6 +58,8 @@ async fn multi_recipient_encryption() {
     )
     .to(BOB_DID.to_owned())
     .from(ALICE_DID.to_owned())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     println!("Message body:");
@@ -122,7 +132,7 @@ async fn multi_recipient_encryption() {
 
     println!("   ✅ Bob successfully decrypted!");
     println!("   - Message ID: {}", bob_msg.id);
-    println!("   - Authenticated: {}", bob_metadata.authenticated);
+    println!("   - Sender proven: {}", bob_metadata.sender_proven);
     println!("   - Sender: {:?}", bob_metadata.encrypted_from_kid);
     println!("   - Message content:");
     println!(

@@ -52,7 +52,10 @@ mod utils;
 #[cfg(test)]
 pub(crate) use crate as didcomm;
 
+// The integration tests, examples and benches include this file too and each uses a different
+// part of it, so the unit tests leave some of it unused.
 #[cfg(test)]
+#[allow(dead_code)]
 mod test_vectors;
 
 #[cfg(test)]
@@ -163,7 +166,8 @@ pub mod secrets;
 pub use message::{
     Attachment, AttachmentBuilder, AttachmentData, Base64AttachmentData, FromPrior,
     JsonAttachmentData, LinksAttachmentData, Message, MessageBuilder, MessagingServiceMetadata,
-    PackEncryptedMetadata, PackEncryptedOptions, PackSignedMetadata, UnpackMetadata, UnpackOptions,
+    PackEncryptedMetadata, PackEncryptedOptions, PackSignedMetadata, SenderRequirement,
+    UnpackMetadata, UnpackOptions,
 };
 
 #[cfg(test)]
@@ -236,7 +240,7 @@ mod tests {
         .expect("unpack is ok.");
 
         assert!(metadata.encrypted);
-        assert!(metadata.authenticated);
+        assert!(metadata.sender_proven);
         assert!(metadata.encrypted_from_kid.is_some());
         assert!(metadata.encrypted_from_kid.unwrap().starts_with(recipient));
 

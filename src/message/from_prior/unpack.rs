@@ -24,7 +24,8 @@ impl FromPrior {
     /// Tuple (plaintext `from_prior` value, identifier of the issuer key used to sign `from_prior`)
     ///
     /// # Errors
-    /// - `Malformed` Signed `from_prior` JWT is malformed.
+    /// - `Malformed` Signed `from_prior` JWT is malformed, or its `iss` is not the DID of the
+    ///   key that signed it.
     /// - `DIDNotResolved` Issuer DID not found.
     /// - `DIDUrlNotFound` Issuer authentication verification method is not found.
     /// - `Unsupported` Used crypto or method is unsupported.
@@ -155,7 +156,36 @@ impl FromPrior {
         let from_prior: FromPrior = serde_json::from_str(&payload)
             .kind(ErrorKind::Malformed, "Unable to parse from_prior")?;
 
+        // The signature proves that the holder of `kid` wrote the payload, so `iss` has to
+        // be that holder, not whoever the payload says.
+        if from_prior.iss != did {
+            Err(err_msg(
+                ErrorKind::Malformed,
+                "from_prior `iss` is not the DID of the signing key",
+            ))?;
+        }
+
         Ok((from_prior, kid.into()))
+    }
+
+    /// Checks `exp` and `nbf` against `now` (seconds since the Unix epoch).
+    ///
+    /// # Errors
+    /// - `Expired` `exp <= now`, or `nbf > now + future_skew_secs`.
+    pub fn check_times(&self, now: u64, future_skew_secs: u64) -> Result<()> {
+        if let Some(exp) = self.exp {
+            if exp <= now {
+                Err(err_msg(ErrorKind::Expired, "from_prior has expired"))?;
+            }
+        }
+
+        if let Some(nbf) = self.nbf {
+            if nbf > now.saturating_add(future_skew_secs) {
+                Err(err_msg(ErrorKind::Expired, "from_prior is not valid yet"))?;
+            }
+        }
+
+        Ok(())
     }
 }
 

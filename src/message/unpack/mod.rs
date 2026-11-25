@@ -18,11 +18,38 @@ use crate::{
 mod anoncrypt;
 mod authcrypt;
 mod plaintext;
+mod sender;
 mod sign;
 
+#[cfg(test)]
+mod wire_tests;
+
 impl Message {
-    /// Unpacks the packed message by doing decryption and verifying the signatures.
-    /// This method supports all DID Comm message types (encrypted, signed, plaintext).
+    /// Unpacks the packed message by doing decryption and verifying the signatures, and proves
+    /// who sent it.
+    /// This method supports all DID Comm message types (encrypted, signed, plaintext), but
+    /// only an encrypted message can have a sender.
+    ///
+    /// # Sender
+    /// The sender of a message is proven only by an authcrypt layer: `from` is present, equals
+    /// the DID of the authcrypt sender key and, if the message is also signed, the DID of the
+    /// signer key. A signature alone never proves the sender, because anyone who holds a signed
+    /// message can encrypt it again. A plaintext message, a bare JWS and a message that is
+    /// only anoncrypted have no proven sender.
+    /// - With `UnpackOptions::sender` = `SenderRequirement::Proven` (the default) a message
+    ///   without a proven sender is refused.
+    /// - With `SenderRequirement::AllowAnonymous` such a message is returned with `from` and
+    ///   `from_prior` removed and `UnpackMetadata::sender_proven` = `false`, so that nothing
+    ///   the sender claimed can be mistaken for a fact. This is for mediators and for
+    ///   anonymous protocols, which must not read the sender.
+    /// - In both modes a message whose `from` contradicts its authcrypt or signer key is refused.
+    ///
+    /// # Time
+    /// A message with a proven sender must carry `created_time` and `expires_time`. They are
+    /// compared with `UnpackOptions::now` (the system clock if it is not set): the message is
+    /// refused once `expires_time <= now`, or when `created_time` is more than
+    /// `UnpackOptions::future_skew_secs` ahead. Without a proven sender the fields are checked
+    /// only when they are present. `from_prior` `exp` and `nbf` are checked the same way.
     ///
     /// If unpack options expect a particular property (for example that a message is encrypted)
     /// and the packed message doesn't meet the criteria (it's not encrypted), then a MessageUntrusted
@@ -42,12 +69,20 @@ impl Message {
     ///   trust context, algorithms and etc.
     ///
     /// # Errors
+    /// - `SenderNotProven` The sender is not proven and `options.sender` is `Proven`, or the
+    ///   message is not encrypted at all (in both modes), or `from` is missing from an authcrypt
+    ///   message or is not the DID of the authcrypt sender key or of the signer key (in both
+    ///   modes).
+    /// - `Expired` `expires_time` or `from_prior` `exp` has passed, or `created_time` or
+    ///   `from_prior` `nbf` is further ahead than `options.future_skew_secs`.
     /// - `Malformed` Message is not a valid JWE, JWS or JWM (including empty or truncated JSON)
     ///   or has invalid encryption or signatures. This also covers an anoncrypt envelope that
     ///   carries `apu` or is addressed to other keys than the authcrypt inside it, a signature
     ///   `alg` that doesn't match the signer key type, and key material (sender, signer or
     ///   recipient secret) that can't be decoded or parsed, including a multicodec prefix
-    ///   that can't be read.
+    ///   that can't be read. It also covers a message with a proven sender that lacks
+    ///   `created_time` or `expires_time`, and a `from_prior` whose `iss` is not the DID of
+    ///   its signing key, whose `sub` is not the message `from`, or that comes without `from`.
     /// - `IllegalArgument` Multibase key material (sender, signer or recipient secret) without
     ///   the `z` prefix, or with an unknown or wrong multicodec prefix.
     /// - `SecretNotFound` No recipient secrets found, or a recipient secret was removed while
@@ -58,8 +93,24 @@ impl Message {
     ///   of a type this crate doesn't support.
     /// - `IoError` IO error during DID or secrets resolving.
     /// - Errors returned by `did_resolver` or `secrets_resolver` keep their kind.
-    /// - `InvalidState` Indicates library error.
+    /// - `InvalidState` Indicates library error, or `options.now` is `None` on `wasm32`, which
+    ///   has no system clock.
     pub async fn unpack<'dr, 'sr>(
+        msg: &str,
+        did_resolver: &'dr (dyn DIDResolver + 'dr),
+        secrets_resolver: &'sr (dyn SecretsResolver + 'sr),
+        options: &UnpackOptions,
+    ) -> Result<(Self, UnpackMetadata)> {
+        let (mut msg, mut metadata) =
+            Self::unpack_layers(msg, did_resolver, secrets_resolver, options).await?;
+
+        sender::bind(&mut msg, &mut metadata, options)?;
+
+        Ok((msg, metadata))
+    }
+
+    /// Opens the envelopes and parses the plaintext, without deciding who the sender is.
+    async fn unpack_layers<'dr, 'sr>(
         msg: &str,
         did_resolver: &'dr (dyn DIDResolver + 'dr),
         secrets_resolver: &'sr (dyn SecretsResolver + 'sr),
@@ -67,8 +118,7 @@ impl Message {
     ) -> Result<(Self, UnpackMetadata)> {
         let mut metadata = UnpackMetadata {
             encrypted: false,
-            authenticated: false,
-            non_repudiation: false,
+            sender_proven: false,
             anonymous_sender: false,
             re_wrapped_in_forward: false,
             encrypted_from_kid: None,
@@ -180,6 +230,42 @@ pub struct UnpackOptions {
     /// False by default.
     #[serde(default)]
     pub unwrap_re_wrapping_forward: bool,
+
+    /// Whether a message without a proven sender is refused (`Proven`, the default) or
+    /// returned with its sender claims removed (`AllowAnonymous`).
+    #[serde(default)]
+    pub sender: SenderRequirement,
+
+    /// The current time in seconds since the Unix epoch, against which `created_time`,
+    /// `expires_time` and `from_prior` `exp` and `nbf` are checked. `None` reads the system
+    /// clock. On `wasm32` there is no system clock and `None` is an `InvalidState` error
+    /// whenever a time check is due, so set it there.
+    #[serde(default)]
+    pub now: Option<u64>,
+
+    /// How many seconds ahead of `now` a `created_time` or `from_prior` `nbf` may be before
+    /// the message counts as expired (clock skew of the sender). 86 400 (24 hours) by default.
+    #[serde(default = "default_future_skew_secs")]
+    pub future_skew_secs: u64,
+}
+
+fn default_future_skew_secs() -> u64 {
+    DEFAULT_FUTURE_SKEW_SECS
+}
+
+/// Default for `UnpackOptions::future_skew_secs`: 24 hours.
+pub const DEFAULT_FUTURE_SKEW_SECS: u64 = 86_400;
+
+/// Whether `Message::unpack` accepts a message whose sender it cannot prove.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum SenderRequirement {
+    /// Refuse a message unless its sender is proven by authcrypt (the default).
+    #[default]
+    Proven,
+
+    /// Also accept a message without a proven sender. It comes back with `from` and
+    /// `from_prior` removed and `UnpackMetadata::sender_proven` = `false`.
+    AllowAnonymous,
 }
 
 impl Default for UnpackOptions {
@@ -187,6 +273,9 @@ impl Default for UnpackOptions {
         UnpackOptions {
             expect_decrypt_by_all_keys: false,
             unwrap_re_wrapping_forward: true,
+            sender: SenderRequirement::default(),
+            now: None,
+            future_skew_secs: DEFAULT_FUTURE_SKEW_SECS,
         }
     }
 }
@@ -198,11 +287,10 @@ pub struct UnpackMetadata {
     /// Whether the plaintext has been encrypted
     pub encrypted: bool,
 
-    /// Whether the plaintext has been authenticated
-    pub authenticated: bool,
-
-    /// Whether the plaintext has been signed
-    pub non_repudiation: bool,
+    /// Whether the sender is proven: an authcrypt layer whose sender key belongs to `from`
+    /// (and to the signer, if the message is signed). `false` only for a message that
+    /// `SenderRequirement::AllowAnonymous` let through, which then has no `from`.
+    pub sender_proven: bool,
 
     /// Whether the sender ID was hidden or protected
     pub anonymous_sender: bool,
@@ -216,10 +304,12 @@ pub struct UnpackMetadata {
     /// Target key IDS for encryption if the plaintext has been encrypted
     pub encrypted_to_kids: Option<Vec<String>>,
 
-    /// Key ID used for signature if the plaintext has been signed
+    /// Key ID used for signature if the plaintext has been signed. A signature alone does
+    /// not prove the sender, see `sender_proven`.
     pub sign_from: Option<String>,
 
-    /// Key ID used for from_prior header signature if from_prior header is present
+    /// Key ID used for from_prior header signature if from_prior header is present and the
+    /// sender is proven
     pub from_prior_issuer_kid: Option<String>,
 
     /// Algorithm used for authenticated encryption
@@ -234,7 +324,8 @@ pub struct UnpackMetadata {
     /// If the plaintext has been signed, the JWS is returned for non-repudiation purposes
     pub signed_message: Option<String>,
 
-    /// If plaintext contains from_prior header, its unpacked value is returned
+    /// If plaintext contains from_prior header and the sender is proven, its unpacked value
+    /// is returned
     pub from_prior: Option<FromPrior>,
 
     /// List of message IDs in the order they were unpacked (outer layer to inner layer).
@@ -283,17 +374,17 @@ mod test {
         protocols::routing::wrap_in_forward,
         secrets::{resolvers::ExampleSecretsResolver, Secret},
         test_vectors::{
-            remove_field, remove_protected_field, update_field, update_protected_field,
-            ALICE_AUTH_METHOD_25519, ALICE_AUTH_METHOD_P256, ALICE_AUTH_METHOD_SECPP256K1,
-            ALICE_DID, ALICE_DID_DOC, ALICE_SECRETS, ALICE_VERIFICATION_METHOD_KEY_AGREEM_P256,
-            ALICE_VERIFICATION_METHOD_KEY_AGREEM_X25519, BOB_DID, BOB_DID_COMM_MESSAGING_SERVICE,
-            BOB_DID_DOC, BOB_SECRETS, BOB_SECRET_KEY_AGREEMENT_KEY_P256_1,
-            BOB_SECRET_KEY_AGREEMENT_KEY_P256_2, BOB_SECRET_KEY_AGREEMENT_KEY_X25519_1,
-            BOB_SECRET_KEY_AGREEMENT_KEY_X25519_2, BOB_SECRET_KEY_AGREEMENT_KEY_X25519_3,
-            BOB_SERVICE, CHARLIE_AUTH_METHOD_25519, CHARLIE_DID_DOC, ENCRYPTED_MSG_ANON_XC20P_1,
-            ENCRYPTED_MSG_ANON_XC20P_2, ENCRYPTED_MSG_AUTH_P256, ENCRYPTED_MSG_AUTH_P256_SIGNED,
-            ENCRYPTED_MSG_AUTH_X25519, FROM_PRIOR_FULL,
-            INVALID_ENCRYPTED_MSG_ANON_P256_EPK_WRONG_POINT,
+            fixture_unpack_options, remove_field, remove_protected_field, unpacked_message,
+            update_field, update_protected_field, ALICE_AUTH_METHOD_25519, ALICE_AUTH_METHOD_P256,
+            ALICE_AUTH_METHOD_SECPP256K1, ALICE_DID, ALICE_DID_DOC, ALICE_SECRETS,
+            ALICE_VERIFICATION_METHOD_KEY_AGREEM_P256, ALICE_VERIFICATION_METHOD_KEY_AGREEM_X25519,
+            BOB_DID, BOB_DID_COMM_MESSAGING_SERVICE, BOB_DID_DOC, BOB_SECRETS,
+            BOB_SECRET_KEY_AGREEMENT_KEY_P256_1, BOB_SECRET_KEY_AGREEMENT_KEY_P256_2,
+            BOB_SECRET_KEY_AGREEMENT_KEY_X25519_1, BOB_SECRET_KEY_AGREEMENT_KEY_X25519_2,
+            BOB_SECRET_KEY_AGREEMENT_KEY_X25519_3, BOB_SERVICE, CHARLIE_AUTH_METHOD_25519,
+            CHARLIE_DID_DOC, ENCRYPTED_MSG_ANON_XC20P_1, ENCRYPTED_MSG_ANON_XC20P_2,
+            ENCRYPTED_MSG_AUTH_P256, ENCRYPTED_MSG_AUTH_P256_SIGNED, ENCRYPTED_MSG_AUTH_X25519,
+            FROM_PRIOR_FULL, INVALID_ENCRYPTED_MSG_ANON_P256_EPK_WRONG_POINT,
             INVALID_PLAINTEXT_MSG_ATTACHMENTS_AS_INT_ARRAY,
             INVALID_PLAINTEXT_MSG_ATTACHMENTS_AS_STRING,
             INVALID_PLAINTEXT_MSG_ATTACHMENTS_EMPTY_DATA,
@@ -323,8 +414,7 @@ mod test {
     async fn unpack_works_plaintext() {
         let plaintext_metadata = UnpackMetadata {
             anonymous_sender: false,
-            authenticated: false,
-            non_repudiation: false,
+            sender_proven: false,
             encrypted: false,
             enc_alg_auth: None,
             enc_alg_anon: None,
@@ -408,8 +498,7 @@ mod test {
                 msg,
                 &UnpackMetadata {
                     anonymous_sender: false,
-                    authenticated: false,
-                    non_repudiation: false,
+                    sender_proven: false,
                     encrypted: false,
                     enc_alg_auth: None,
                     enc_alg_anon: None,
@@ -432,8 +521,7 @@ mod test {
     async fn unpack_works_signed() {
         let sign_metadata = UnpackMetadata {
             anonymous_sender: false,
-            authenticated: true,
-            non_repudiation: true,
+            sender_proven: false,
             encrypted: false,
             enc_alg_auth: None,
             enc_alg_anon: None,
@@ -541,8 +629,7 @@ mod test {
                     sign_alg: Some(sign_alg),
                     signed_message: Some(msg.clone()),
                     anonymous_sender: false,
-                    authenticated: true,
-                    non_repudiation: true,
+                    sender_proven: false,
                     encrypted: false,
                     enc_alg_auth: None,
                     enc_alg_anon: None,
@@ -562,8 +649,7 @@ mod test {
     async fn unpack_works_anoncrypt() {
         let metadata = UnpackMetadata {
             anonymous_sender: true,
-            authenticated: false,
-            non_repudiation: false,
+            sender_proven: false,
             encrypted: true,
             enc_alg_auth: None,
             enc_alg_anon: None,
@@ -694,7 +780,7 @@ mod test {
                 &msg,
                 &did_resolver,
                 &mediator1_secrets_resolver,
-                &UnpackOptions::default(),
+                &fixture_unpack_options(),
             )
             .await
             .expect("Unable unpack");
@@ -706,8 +792,7 @@ mod test {
             assert_eq!(&forward.next, to);
 
             assert!(unpack_metadata_mediator1.encrypted);
-            assert!(!unpack_metadata_mediator1.authenticated);
-            assert!(!unpack_metadata_mediator1.non_repudiation);
+            assert!(!unpack_metadata_mediator1.sender_proven);
             assert!(unpack_metadata_mediator1.anonymous_sender);
             assert!(!unpack_metadata_mediator1.re_wrapped_in_forward);
 
@@ -729,12 +814,16 @@ mod test {
                 &re_wrapping_forward_msg,
                 &did_resolver,
                 &bob_secrets_resolver,
-                &UnpackOptions::default(),
+                &fixture_unpack_options(),
             )
             .await
             .expect("Unable unpack");
 
-            assert_eq!(&unpacked_msg, &*MESSAGE_SIMPLE);
+            assert_eq!(
+                &unpacked_msg,
+                &unpacked_message(&MESSAGE_SIMPLE, from.is_some())
+            );
+            assert_eq!(unpack_metadata.sender_proven, from.is_some());
             assert!(unpack_metadata.re_wrapped_in_forward);
         }
     }
@@ -824,7 +913,7 @@ mod test {
                 &mediator1_secrets_resolver,
                 &UnpackOptions {
                     unwrap_re_wrapping_forward: false,
-                    ..UnpackOptions::default()
+                    ..fixture_unpack_options()
                 },
             )
             .await
@@ -837,8 +926,7 @@ mod test {
             assert_eq!(&forward_at_mediator1.next, to);
 
             assert!(unpack_metadata_mediator1.encrypted);
-            assert!(!unpack_metadata_mediator1.authenticated);
-            assert!(!unpack_metadata_mediator1.non_repudiation);
+            assert!(!unpack_metadata_mediator1.sender_proven);
             assert!(unpack_metadata_mediator1.anonymous_sender);
             assert!(!unpack_metadata_mediator1.re_wrapped_in_forward);
 
@@ -863,7 +951,7 @@ mod test {
                 &bob_secrets_resolver,
                 &UnpackOptions {
                     unwrap_re_wrapping_forward: false,
-                    ..UnpackOptions::default()
+                    ..fixture_unpack_options()
                 },
             )
             .await
@@ -876,8 +964,7 @@ mod test {
             assert_eq!(&forward_at_bob.next, to);
 
             assert!(unpack_once_metadata.encrypted);
-            assert!(!unpack_once_metadata.authenticated);
-            assert!(!unpack_once_metadata.non_repudiation);
+            assert!(!unpack_once_metadata.sender_proven);
             assert!(unpack_once_metadata.anonymous_sender);
             assert!(!unpack_once_metadata.re_wrapped_in_forward);
 
@@ -890,20 +977,20 @@ mod test {
                 &bob_secrets_resolver,
                 &UnpackOptions {
                     unwrap_re_wrapping_forward: false,
-                    ..UnpackOptions::default()
+                    ..fixture_unpack_options()
                 },
             )
             .await
             .expect("Unable unpack");
 
-            assert_eq!(&unpacked_twice_msg, &*MESSAGE_SIMPLE);
+            assert_eq!(
+                &unpacked_twice_msg,
+                &unpacked_message(&MESSAGE_SIMPLE, from.is_some())
+            );
 
             assert!(unpack_twice_metadata.encrypted);
-            assert_eq!(
-                unpack_twice_metadata.authenticated,
-                from.is_some() || sign_by.is_some()
-            );
-            assert_eq!(unpack_twice_metadata.non_repudiation, sign_by.is_some());
+            assert_eq!(unpack_twice_metadata.sender_proven, from.is_some());
+            assert_eq!(unpack_twice_metadata.sign_from.is_some(), sign_by.is_some());
             assert_eq!(unpack_twice_metadata.anonymous_sender, from.is_none());
             assert!(!unpack_twice_metadata.re_wrapped_in_forward);
         }
@@ -1069,8 +1156,7 @@ mod test {
                     sign_alg: None,
                     signed_message: None,
                     anonymous_sender: true,
-                    authenticated: false,
-                    non_repudiation: false,
+                    sender_proven: false,
                     encrypted: true,
                     enc_alg_auth: None,
                     enc_alg_anon: Some(enc_alg),
@@ -1207,8 +1293,7 @@ mod test {
                     sign_alg: Some(sign_alg),
                     signed_message: None,
                     anonymous_sender: true,
-                    authenticated: true,
-                    non_repudiation: true,
+                    sender_proven: false,
                     encrypted: true,
                     enc_alg_auth: None,
                     enc_alg_anon: Some(enc_alg),
@@ -1228,8 +1313,7 @@ mod test {
     async fn unpack_works_authcrypt() {
         let metadata = UnpackMetadata {
             anonymous_sender: false,
-            authenticated: true,
-            non_repudiation: false,
+            sender_proven: true,
             encrypted: true,
             enc_alg_auth: None,
             enc_alg_anon: None,
@@ -1244,7 +1328,7 @@ mod test {
             message_ids: vec![MESSAGE_SIMPLE.id.clone()],
         };
 
-        _verify_unpack(
+        _verify_unpack_proven(
             ENCRYPTED_MSG_AUTH_X25519,
             &MESSAGE_SIMPLE,
             &UnpackMetadata {
@@ -1260,7 +1344,7 @@ mod test {
         )
         .await;
 
-        _verify_unpack(
+        _verify_unpack_proven(
             ENCRYPTED_MSG_AUTH_P256,
             &MESSAGE_SIMPLE,
             &UnpackMetadata {
@@ -1270,7 +1354,6 @@ mod test {
                     "did:example:bob#key-p256-1".into(),
                     "did:example:bob#key-p256-2".into(),
                 ]),
-                non_repudiation: true,
                 sign_from: Some("did:example:alice#key-1".into()),
                 sign_alg: Some(SignAlg::EdDSA),
                 signed_message: Some(ENCRYPTED_MSG_AUTH_P256_SIGNED.into()),
@@ -1394,7 +1477,7 @@ mod test {
                 .next()
                 .unwrap();
 
-            _verify_unpack(
+            _verify_unpack_proven(
                 &packed,
                 msg,
                 &UnpackMetadata {
@@ -1402,8 +1485,7 @@ mod test {
                     sign_alg: None,
                     signed_message: None,
                     anonymous_sender: false,
-                    authenticated: true,
-                    non_repudiation: false,
+                    sender_proven: true,
                     encrypted: true,
                     enc_alg_auth: Some(enc_alg),
                     enc_alg_anon: None,
@@ -1575,7 +1657,7 @@ mod test {
                 .next()
                 .unwrap();
 
-            _verify_unpack(
+            _verify_unpack_proven(
                 &packed,
                 msg,
                 &UnpackMetadata {
@@ -1583,8 +1665,7 @@ mod test {
                     sign_alg: None,
                     signed_message: None,
                     anonymous_sender: true,
-                    authenticated: true,
-                    non_repudiation: false,
+                    sender_proven: true,
                     encrypted: true,
                     enc_alg_auth: Some(enc_alg_auth),
                     enc_alg_anon: Some(enc_alg_anon),
@@ -1691,7 +1772,7 @@ mod test {
                 .next()
                 .unwrap();
 
-            _verify_unpack_undeterministic(
+            _verify_unpack_proven_undeterministic(
                 &packed,
                 msg,
                 &UnpackMetadata {
@@ -1699,8 +1780,7 @@ mod test {
                     sign_alg: Some(sign_alg),
                     signed_message: Some("nondeterministic".into()),
                     anonymous_sender: true,
-                    authenticated: true,
-                    non_repudiation: true,
+                    sender_proven: true,
                     encrypted: true,
                     enc_alg_auth: Some(enc_alg_auth),
                     enc_alg_anon: Some(enc_alg_anon),
@@ -1811,7 +1891,7 @@ mod test {
                 .next()
                 .unwrap();
 
-            _verify_unpack_undeterministic(
+            _verify_unpack_proven_undeterministic(
                 &packed,
                 msg,
                 &UnpackMetadata {
@@ -1819,8 +1899,7 @@ mod test {
                     sign_alg: Some(sign_alg),
                     signed_message: Some("nondeterministic".into()),
                     anonymous_sender: false,
-                    authenticated: true,
-                    non_repudiation: true,
+                    sender_proven: true,
                     encrypted: true,
                     enc_alg_auth: Some(enc_alg),
                     enc_alg_anon: None,
@@ -1851,7 +1930,7 @@ mod test {
             INVALID_ENCRYPTED_MSG_ANON_P256_EPK_WRONG_POINT,
             &did_resolver,
             &secrets_resolver,
-            &UnpackOptions::default(),
+            &fixture_unpack_options(),
         )
         .await
         .expect_err("res is ok");
@@ -2128,8 +2207,7 @@ mod test {
     async fn unpack_plaintext_works_from_prior() {
         let exp_metadata = UnpackMetadata {
             anonymous_sender: false,
-            authenticated: false,
-            non_repudiation: false,
+            sender_proven: false,
             encrypted: false,
             enc_alg_auth: None,
             enc_alg_anon: None,
@@ -2255,7 +2333,7 @@ mod test {
                 ENCRYPTED_MSG_AUTH_X25519,
                 &did_resolver,
                 &secrets_resolver,
-                &UnpackOptions::default(),
+                &fixture_unpack_options(),
             )
             .await
             .expect_err("res is ok");
@@ -2327,7 +2405,7 @@ mod test {
                 msg,
                 &did_resolver,
                 &VanishingSecrets,
-                &UnpackOptions::default(),
+                &fixture_unpack_options(),
             )
             .await
             .expect_err("res is ok");
@@ -2413,7 +2491,7 @@ mod test {
             SIGNED_MSG_ALICE_KEY_3,
             &did_resolver,
             &secrets_resolver,
-            &UnpackOptions::default(),
+            &fixture_unpack_options(),
         )
         .await
         .expect_err("res is ok");
@@ -2446,7 +2524,7 @@ mod test {
             ENCRYPTED_MSG_AUTH_X25519,
             &did_resolver,
             &secrets_resolver,
-            &UnpackOptions::default(),
+            &fixture_unpack_options(),
         )
         .await
         .expect_err("res is ok");
@@ -2458,6 +2536,8 @@ mod test {
         );
     }
 
+    /// Unpacks the envelopes of `msg` and compares the plaintext and the metadata, without
+    /// the sender being bound: the message keeps its `from` and `sender_proven` is `false`.
     async fn _verify_unpack(msg: &str, exp_msg: &Message, exp_metadata: &UnpackMetadata) {
         let did_resolver = ExampleDIDResolver::new(vec![
             ALICE_DID_DOC.clone(),
@@ -2467,11 +2547,11 @@ mod test {
 
         let secrets_resolver = ExampleSecretsResolver::new(BOB_SECRETS.clone());
 
-        let (msg, metadata) = Message::unpack(
+        let (msg, metadata) = Message::unpack_layers(
             msg,
             &did_resolver,
             &secrets_resolver,
-            &UnpackOptions::default(),
+            &fixture_unpack_options(),
         )
         .await
         .expect("unpack is ok.");
@@ -2494,16 +2574,77 @@ mod test {
 
         let secrets_resolver = ExampleSecretsResolver::new(BOB_SECRETS.clone());
 
-        let (msg, mut metadata) = Message::unpack(
+        let (msg, mut metadata) = Message::unpack_layers(
             msg,
             &did_resolver,
             &secrets_resolver,
-            &UnpackOptions::default(),
+            &fixture_unpack_options(),
         )
         .await
         .expect("unpack is ok.");
 
         assert_eq!(&msg, exp_msg);
+
+        metadata.signed_message = exp_metadata.signed_message.clone();
+        assert_eq!(&metadata, exp_metadata);
+    }
+
+    /// Unpacks `msg` with `SenderRequirement::Proven` and compares the plaintext and the
+    /// metadata, which has to say that the sender is proven.
+    async fn _verify_unpack_proven(msg: &str, exp_msg: &Message, exp_metadata: &UnpackMetadata) {
+        let did_resolver = ExampleDIDResolver::new(vec![
+            ALICE_DID_DOC.clone(),
+            BOB_DID_DOC.clone(),
+            CHARLIE_DID_DOC.clone(),
+        ]);
+
+        let secrets_resolver = ExampleSecretsResolver::new(BOB_SECRETS.clone());
+
+        let (msg, metadata) = Message::unpack(
+            msg,
+            &did_resolver,
+            &secrets_resolver,
+            &UnpackOptions {
+                sender: SenderRequirement::Proven,
+                ..fixture_unpack_options()
+            },
+        )
+        .await
+        .expect("unpack is ok.");
+
+        assert_eq!(&msg, exp_msg);
+        assert!(metadata.sender_proven);
+        assert_eq!(&metadata, exp_metadata);
+    }
+
+    // Same as `_verify_unpack_proven`, but skips indeterministic values from metadata checking
+    async fn _verify_unpack_proven_undeterministic(
+        msg: &str,
+        exp_msg: &Message,
+        exp_metadata: &UnpackMetadata,
+    ) {
+        let did_resolver = ExampleDIDResolver::new(vec![
+            ALICE_DID_DOC.clone(),
+            BOB_DID_DOC.clone(),
+            CHARLIE_DID_DOC.clone(),
+        ]);
+
+        let secrets_resolver = ExampleSecretsResolver::new(BOB_SECRETS.clone());
+
+        let (msg, mut metadata) = Message::unpack(
+            msg,
+            &did_resolver,
+            &secrets_resolver,
+            &UnpackOptions {
+                sender: SenderRequirement::Proven,
+                ..fixture_unpack_options()
+            },
+        )
+        .await
+        .expect("unpack is ok.");
+
+        assert_eq!(&msg, exp_msg);
+        assert!(metadata.sender_proven);
 
         metadata.signed_message = exp_metadata.signed_message.clone();
         assert_eq!(&metadata, exp_metadata);
@@ -2533,7 +2674,7 @@ mod test {
             msg,
             &did_resolver,
             &secrets_resolver,
-            &UnpackOptions::default(),
+            &fixture_unpack_options(),
         )
         .await
         .expect_err("res is ok")

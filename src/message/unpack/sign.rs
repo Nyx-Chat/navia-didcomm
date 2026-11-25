@@ -162,8 +162,6 @@ pub(crate) async fn _try_unpack_sign<'dr>(
     let payload =
         String::from_utf8(payload).kind(ErrorKind::Malformed, "Signed payload is invalid utf8")?;
 
-    metadata.authenticated = true;
-    metadata.non_repudiation = true;
     metadata.sign_from = Some(signer_kid.into());
     metadata.signed_message = Some(jws_json.into());
 

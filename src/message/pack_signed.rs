@@ -157,13 +157,13 @@ mod tests {
             resolvers::ExampleSecretsResolver, Secret, SecretMaterial, SecretType, SecretsResolver,
         },
         test_vectors::{
-            ALICE_AUTH_METHOD_25519, ALICE_AUTH_METHOD_P256, ALICE_AUTH_METHOD_SECPP256K1,
-            ALICE_DID, ALICE_DID_DOC, ALICE_DID_DOC_WITH_NO_SECRETS, ALICE_SECRETS, BOB_DID_DOC,
-            BOB_SECRETS, CHARLIE_DID_DOC, CHARLIE_ROTATED_TO_ALICE_SECRETS,
-            CHARLIE_SECRET_AUTH_KEY_ED25519, FROM_PRIOR_FULL, MESSAGE_FROM_PRIOR_FULL,
-            MESSAGE_SIMPLE, PLAINTEXT_MSG_SIMPLE,
+            fixture_unpack_options, ALICE_AUTH_METHOD_25519, ALICE_AUTH_METHOD_P256,
+            ALICE_AUTH_METHOD_SECPP256K1, ALICE_DID, ALICE_DID_DOC, ALICE_DID_DOC_WITH_NO_SECRETS,
+            ALICE_SECRETS, BOB_DID_DOC, BOB_SECRETS, CHARLIE_DID_DOC,
+            CHARLIE_ROTATED_TO_ALICE_SECRETS, MESSAGE_FROM_PRIOR_FULL, MESSAGE_SIMPLE,
+            PLAINTEXT_MSG_SIMPLE,
         },
-        Message, PackSignedMetadata, UnpackOptions,
+        Message, PackSignedMetadata,
     };
 
     #[tokio::test]
@@ -441,20 +441,15 @@ mod tests {
             .await
             .expect("Unable pack_signed");
 
-        let (unpacked_msg, unpack_metadata) = Message::unpack(
+        // A bare JWS has no sender that unpack can prove, the signature alone does not.
+        let err = Message::unpack(
             &packed_msg,
             &did_resolver,
             &bob_secrets_resolver,
-            &UnpackOptions::default(),
+            &fixture_unpack_options(),
         )
         .await
-        .expect("Unable unpack");
-
-        assert_eq!(&unpacked_msg, &*MESSAGE_FROM_PRIOR_FULL);
-        assert_eq!(
-            unpack_metadata.from_prior_issuer_kid.as_ref(),
-            Some(&CHARLIE_SECRET_AUTH_KEY_ED25519.id)
-        );
-        assert_eq!(unpack_metadata.from_prior.as_ref(), Some(&*FROM_PRIOR_FULL));
+        .expect_err("a bare JWS is not accepted");
+        assert_eq!(err.kind(), ErrorKind::SenderNotProven);
     }
 }

@@ -9,13 +9,30 @@ pub(crate) use navia_didcomm as didcomm;
 use navia_didcomm::{
     did::resolvers::ExampleDIDResolver, protocols::routing::try_parse_forward,
     secrets::resolvers::ExampleSecretsResolver, FromPrior, Message, PackEncryptedOptions,
-    UnpackOptions,
+    SenderRequirement, UnpackOptions,
 };
 use serde_json::json;
 use test_vectors::{
     ALICE_DID, ALICE_DID_DOC, BOB_DID, BOB_DID_DOC, BOB_SECRETS, CHARLIE_DID, CHARLIE_DID_DOC,
     CHARLIE_ROTATED_TO_ALICE_SECRETS, MEDIATOR1_DID_DOC, MEDIATOR1_SECRETS,
 };
+
+/// For a mediator, which opens only the outer envelope, and for a recipient of an anonymous
+/// message: neither has a sender that unpack could prove.
+fn allow_anonymous() -> UnpackOptions {
+    UnpackOptions {
+        sender: SenderRequirement::AllowAnonymous,
+        ..UnpackOptions::default()
+    }
+}
+
+/// Seconds since the Unix epoch, for the time fields of the messages.
+fn now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock is after the epoch")
+        .as_secs()
+}
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -31,9 +48,9 @@ async fn main() {
     // --- Building from_prior header
     let from_prior = FromPrior::build(CHARLIE_DID.into(), ALICE_DID.into())
         .aud("123".into())
-        .exp(1234)
-        .nbf(12345)
-        .iat(123456)
+        .exp(now() + 3600)
+        .nbf(now() - 60)
+        .iat(now())
         .jti("dfg".into())
         .finalize();
 
@@ -54,9 +71,9 @@ async fn main() {
         json!({"messagespecificattribute": "and its value"}),
     )
     .from(ALICE_DID.to_owned())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .to(BOB_DID.to_owned())
-    .created_time(1516269022)
-    .expires_time(1516385931)
     .from_prior(from_prior)
     .finalize();
 
@@ -93,14 +110,10 @@ async fn main() {
 
     let secrets_resolver = ExampleSecretsResolver::new(MEDIATOR1_SECRETS.clone());
 
-    let (msg, metadata) = Message::unpack(
-        &msg,
-        &did_resolver,
-        &secrets_resolver,
-        &UnpackOptions::default(),
-    )
-    .await
-    .expect("Unable unpack");
+    let (msg, metadata) =
+        Message::unpack(&msg, &did_resolver, &secrets_resolver, &allow_anonymous())
+            .await
+            .expect("Unable unpack");
 
     println!("Mediator1 received message is \n{:?}\n", msg);
 

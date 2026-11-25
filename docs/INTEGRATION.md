@@ -36,7 +36,9 @@ let packed_msg = pack_encrypted(
     &PackEncryptedOptions::default()
 ).await?;
 
-// Unpack a received message  
+// Unpack a received message. By default the message is returned only when its sender is
+// proven (authcrypt, `from` matches the key, `created_time` and `expires_time` present and
+// valid): `metadata.sender_proven` is then `true`.
 let (unpacked_msg, metadata) = unpack(
     &received_msg,
     &did_resolver,
@@ -44,6 +46,12 @@ let (unpacked_msg, metadata) = unpack(
     &UnpackOptions::default()
 ).await?;
 ```
+
+A message packed with `from` must carry `created_time` and `expires_time`, and the receiver
+checks them against its clock (`UnpackOptions::now`, `future_skew_secs`). A mediator, or a
+recipient of an anoncrypt message, has no sender to prove and unpacks with
+`UnpackOptions { sender: SenderRequirement::AllowAnonymous, ..Default::default() }`; the
+message then comes back with `from` removed and `sender_proven == false`.
 
 ### Integration with UniFFI
 
@@ -98,11 +106,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Handle incoming messages
     while let Ok(incoming_msg) = receive_message().await {
+        // A mediator opens only the outer anoncrypt layer: it has no sender to prove.
         let (message, metadata) = unpack(
             &incoming_msg,
             &did_resolver, 
             &secrets_resolver,
-            &Default::default()
+            &UnpackOptions {
+                sender: SenderRequirement::AllowAnonymous,
+                ..Default::default()
+            }
         ).await?;
         
         // Check if this is a forward message

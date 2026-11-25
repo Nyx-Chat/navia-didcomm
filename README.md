@@ -83,6 +83,22 @@ A general usage of the API is the following:
   - Call `Message::unpack` on receiver side that will decrypt the message, verify signature if needed
   and return a `Message` for further processing on the application level.
 
+**Sender proof (v2).** `Message::unpack` fails closed on the sender. With the default
+`UnpackOptions` it returns a message only when its sender is proven: an authcrypt layer, `from`
+present, `from` equal to the DID of the authcrypt sender key, and, for a signed message, the signer
+equal to `from`. A signature alone never proves the sender, and plaintext and bare JWS messages
+are always refused with `ErrorKind::SenderNotProven`. `UnpackMetadata::sender_proven` says which
+case you are in. A mediator, or a recipient of an anoncrypt message, has no sender to prove and
+sets `UnpackOptions { sender: SenderRequirement::AllowAnonymous, ..Default::default() }`: the
+message then comes back with `from` and `from_prior` removed.
+
+**Time fields (v2).** A message packed with `from` must have `created_time` and `expires_time`
+(`pack_encrypted` returns `IllegalArgument` otherwise). `unpack` requires both on a proven sender
+and returns `ErrorKind::Expired` when `expires_time <= now` or `created_time` is more than
+`future_skew_secs` (24 hours by default) ahead. `UnpackOptions::now` sets the clock (`None` reads
+the system clock, which `wasm32` does not have). `from_prior` is checked the same way and its `iss`
+and `sub` must match the signing key and the message `from`.
+
 ### 1. Build an Encrypted DIDComm message for the given recipient
 
 This is the most common DIDComm message to be used in most of the applications.
@@ -108,6 +124,8 @@ let msg = Message::build(
 )
 .to(ALICE_DID.to_owned())
 .from(BOB_DID.to_owned())
+.created_time(now)
+.expires_time(now + 3600) // `now`: seconds since the Unix epoch
 .finalize();
 
 // --- Pack encrypted and authenticated message ---
@@ -147,6 +165,7 @@ let (msg, metadata) = Message::unpack(
 .await
 .expect("Unable unpack");
 
+assert!(metadata.sender_proven);
 println!("Receved message is \n{:?}\n", msg);
 println!("Receved message unpack metadata is \n{:?}\n", metadata);
 ```
@@ -168,6 +187,20 @@ let (msg, metadata) = msg
     .into_iter()
     .next()
     .unwrap();
+
+// The recipient has no sender to prove, so it has to allow an anonymous one:
+let (msg, metadata) = Message::unpack(
+    &msg,
+    &did_resolver,
+    &secrets_resolver,
+    &UnpackOptions {
+        sender: SenderRequirement::AllowAnonymous,
+        ..UnpackOptions::default()
+    },
+)
+.await
+.expect("Unable unpack");
+assert!(!metadata.sender_proven);
 ```
 
 **Encryption with non-repudiation** example:
@@ -240,15 +273,18 @@ let (msg, metadata) = msg
     .await
     .expect("Unable pack_signed");
 
-// BOB
-let (msg, metadata) = Message::unpack(
+// BOB: a signed message alone never proves its sender, so unpack refuses it, with
+// `AllowAnonymous` as well. Sign inside an authcrypt message instead, see "Encryption
+// with non-repudiation".
+let err = Message::unpack(
     &msg,
     &did_resolver,
     &secrets_resolver,
     &UnpackOptions::default(),
 )
 .await
-.expect("Unable unpack");
+.expect_err("the sender is not proven");
+assert_eq!(err.kind(), ErrorKind::SenderNotProven);
 ```
 
 ### 3. Build a Plaintext DIDComm message
@@ -275,15 +311,16 @@ let msg = msg
     .pack_plaintext(&did_resolver)
     .expect("Unable pack_plaintext");
 
-// BOB
-let (msg, metadata) = Message::unpack(
+// BOB: a plaintext message has no proven sender either, so unpack refuses it.
+let err = Message::unpack(
     &msg,
     &did_resolver,
     &secrets_resolver,
     &UnpackOptions::default(),
 )
 .await
-.expect("Unable unpack");
+.expect_err("the sender is not proven");
+assert_eq!(err.kind(), ErrorKind::SenderNotProven);
 ```
 
 ## Contribution

@@ -56,6 +56,12 @@ pub enum ErrorKind {
     #[error("Required header or field missing")]
     MissingRequiredField,
 
+    #[error("Sender not proven")]
+    SenderNotProven,
+
+    #[error("Message expired or not yet valid")]
+    Expired,
+
     // Cryptographic Errors
     #[error("No compatible cryptographic algorithms found")]
     NoCompatibleCrypto,
@@ -199,6 +205,8 @@ impl Error {
             ErrorKind::ProtocolViolation
                 | ErrorKind::UnsupportedFormat
                 | ErrorKind::MissingRequiredField
+                | ErrorKind::SenderNotProven
+                | ErrorKind::Expired
                 | ErrorKind::Malformed
         )
     }
@@ -271,6 +279,8 @@ impl Error {
             // Debug level for validation and input errors
             ErrorKind::Malformed
             | ErrorKind::IllegalArgument
+            | ErrorKind::SenderNotProven
+            | ErrorKind::Expired
             | ErrorKind::MissingRequiredField
             | ErrorKind::UnsupportedFormat => {
                 debug!(

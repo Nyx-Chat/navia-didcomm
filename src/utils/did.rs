@@ -2,7 +2,10 @@ use askar_crypto::alg::{
     ed25519::Ed25519KeyPair, k256::K256KeyPair, p256::P256KeyPair, p384::P384KeyPair,
     x25519::X25519KeyPair,
 };
-use askar_crypto::repr::{KeyPublicBytes, KeySecretBytes};
+use askar_crypto::{
+    buffer::SecretBytes,
+    repr::{KeyPublicBytes, KeySecretBytes},
+};
 use base64::prelude::*;
 use serde_json::{json, Value};
 use std::io::Cursor;
@@ -13,7 +16,7 @@ use crate::{
     did::{did_doc::VerificationMethodType, VerificationMaterial, VerificationMethod},
     error::{err_msg, ErrorKind, Result, ResultExt},
     jwk::FromJwkValue,
-    secrets::{Secret, SecretMaterial, SecretType},
+    secrets::{wipe::SecretJson, Secret, SecretMaterial, SecretType},
     utils::crypto::{AsKnownKeyPair, KnownKeyAlg, KnownKeyPair},
 };
 
@@ -338,27 +341,13 @@ impl AsKnownKeyPair for Secret {
                     private_key_base58: ref value,
                 },
             ) => {
-                let decoded_value = bs58::decode(value)
-                    .into_vec()
-                    .to_didcomm("Wrong base58 value in secret material")?;
+                let decoded_value = SecretBytes::from(
+                    bs58::decode(value)
+                        .into_vec()
+                        .to_didcomm("Wrong base58 value in secret material")?,
+                );
 
-                let key_pair = X25519KeyPair::from_secret_bytes(&decoded_value)
-                    .kind(ErrorKind::Malformed, "Unable parse x25519 secret material")?;
-
-                let mut jwk = json!({
-                    "kty": "OKP",
-                    "crv": "X25519",
-                });
-
-                key_pair.with_public_bytes(|buf| {
-                    jwk["x"] = Value::String(BASE64_URL_SAFE_NO_PAD.encode(buf))
-                });
-
-                key_pair.with_secret_bytes(|buf| {
-                    if let Some(sk) = buf {
-                        jwk["d"] = Value::String(BASE64_URL_SAFE_NO_PAD.encode(sk))
-                    }
-                });
+                let jwk = x25519_secret_jwk(&decoded_value)?;
 
                 X25519KeyPair::from_jwk_value(&jwk)
                     .kind(ErrorKind::Malformed, "Unable parse base58 secret material")
@@ -371,20 +360,13 @@ impl AsKnownKeyPair for Secret {
                     private_key_base58: ref value,
                 },
             ) => {
-                let decoded_value = bs58::decode(value)
-                    .into_vec()
-                    .to_didcomm("Wrong base58 value in secret material")?;
+                let decoded_value = SecretBytes::from(
+                    bs58::decode(value)
+                        .into_vec()
+                        .to_didcomm("Wrong base58 value in secret material")?,
+                );
 
-                let curve25519_point_size = 32;
-                let (d_value, x_value) = decoded_value.split_at(curve25519_point_size);
-                let base64_url_d_value = BASE64_URL_SAFE_NO_PAD.encode(d_value);
-                let base64_url_x_value = BASE64_URL_SAFE_NO_PAD.encode(x_value);
-
-                let jwk = json!({"kty": "OKP",
-                    "crv": "Ed25519",
-                    "x": base64_url_x_value,
-                    "d": base64_url_d_value
-                });
+                let jwk = ed25519_secret_jwk(&decoded_value)?;
 
                 Ed25519KeyPair::from_jwk_value(&jwk)
                     .kind(ErrorKind::Malformed, "Unable parse base58 secret material")
@@ -397,15 +379,17 @@ impl AsKnownKeyPair for Secret {
                     private_key_multibase: ref value,
                 },
             ) => {
-                if !value.starts_with('z') {
+                let Some(encoded_value) = value.strip_prefix('z') else {
                     Err(err_msg(
                         ErrorKind::IllegalArgument,
                         "Multibase must start with 'z'",
                     ))?
-                }
-                let decoded_multibase_value = bs58::decode(&value[1..])
-                    .into_vec()
-                    .to_didcomm("Wrong multibase value in secret material")?;
+                };
+                let decoded_multibase_value = SecretBytes::from(
+                    bs58::decode(encoded_value)
+                        .into_vec()
+                        .to_didcomm("Wrong multibase value in secret material")?,
+                );
 
                 let (codec, decoded_value) = _from_multicodec(&decoded_multibase_value)?;
                 if codec != Codec::X25519Priv {
@@ -415,23 +399,7 @@ impl AsKnownKeyPair for Secret {
                     ))?
                 }
 
-                let key_pair = X25519KeyPair::from_secret_bytes(decoded_value)
-                    .kind(ErrorKind::Malformed, "Unable parse x25519 secret material")?;
-
-                let mut jwk = json!({
-                    "kty": "OKP",
-                    "crv": "X25519",
-                });
-
-                key_pair.with_public_bytes(|buf| {
-                    jwk["x"] = Value::String(BASE64_URL_SAFE_NO_PAD.encode(buf))
-                });
-
-                key_pair.with_secret_bytes(|buf| {
-                    if let Some(sk) = buf {
-                        jwk["d"] = Value::String(BASE64_URL_SAFE_NO_PAD.encode(sk))
-                    }
-                });
+                let jwk = x25519_secret_jwk(decoded_value)?;
 
                 X25519KeyPair::from_jwk_value(&jwk)
                     .kind(
@@ -447,15 +415,17 @@ impl AsKnownKeyPair for Secret {
                     private_key_multibase: ref value,
                 },
             ) => {
-                if !value.starts_with('z') {
+                let Some(encoded_value) = value.strip_prefix('z') else {
                     Err(err_msg(
                         ErrorKind::IllegalArgument,
                         "Multibase must start with 'z'",
                     ))?
-                }
-                let decoded_multibase_value = bs58::decode(&value[1..])
-                    .into_vec()
-                    .to_didcomm("Wrong multibase value in secret material")?;
+                };
+                let decoded_multibase_value = SecretBytes::from(
+                    bs58::decode(encoded_value)
+                        .into_vec()
+                        .to_didcomm("Wrong multibase value in secret material")?,
+                );
 
                 let (codec, decoded_value) = _from_multicodec(&decoded_multibase_value)?;
                 if codec != Codec::Ed25519Priv {
@@ -465,17 +435,7 @@ impl AsKnownKeyPair for Secret {
                     ))?
                 }
 
-                let curve25519_point_size = 32;
-                let (d_value, x_value) = decoded_value.split_at(curve25519_point_size);
-                let base64_url_d_value = BASE64_URL_SAFE_NO_PAD.encode(d_value);
-                let base64_url_x_value = BASE64_URL_SAFE_NO_PAD.encode(x_value);
-
-                let jwk = json!({
-                    "kty": "OKP",
-                    "crv": "Ed25519",
-                    "x": base64_url_x_value,
-                    "d": base64_url_d_value
-                });
+                let jwk = ed25519_secret_jwk(decoded_value)?;
 
                 Ed25519KeyPair::from_jwk_value(&jwk)
                     .kind(
@@ -491,6 +451,60 @@ impl AsKnownKeyPair for Secret {
             )),
         }
     }
+}
+
+/// Size of a Curve25519 point and of an Ed25519 seed, in bytes.
+const CURVE25519_POINT_SIZE: usize = 32;
+
+/// The private JWK of the X25519 key with the secret bytes `secret`.
+///
+/// # Errors
+/// - `Malformed` `secret` is not a valid X25519 secret.
+fn x25519_secret_jwk(secret: &[u8]) -> Result<SecretJson> {
+    let key_pair = X25519KeyPair::from_secret_bytes(secret)
+        .kind(ErrorKind::Malformed, "Unable parse x25519 secret material")?;
+
+    let mut jwk = SecretJson::new(json!({
+        "kty": "OKP",
+        "crv": "X25519",
+    }));
+
+    key_pair.with_public_bytes(|buf| {
+        jwk["x"] = Value::String(BASE64_URL_SAFE_NO_PAD.encode(buf));
+    });
+
+    key_pair.with_secret_bytes(|buf| {
+        if let Some(sk) = buf {
+            jwk["d"] = Value::String(BASE64_URL_SAFE_NO_PAD.encode(sk));
+        }
+    });
+
+    Ok(jwk)
+}
+
+/// The private JWK of an Ed25519 key given as the 32 byte seed followed by the 32 byte
+/// public key.
+///
+/// # Errors
+/// - `Malformed` `secret` is not exactly 64 bytes.
+fn ed25519_secret_jwk(secret: &[u8]) -> Result<SecretJson> {
+    if secret.len() != 2 * CURVE25519_POINT_SIZE {
+        Err(err_msg(
+            ErrorKind::Malformed,
+            "Ed25519 secret material must be 64 bytes: the seed and the public key",
+        ))?
+    }
+
+    let (d_value, x_value) = secret.split_at(CURVE25519_POINT_SIZE);
+
+    let mut jwk = SecretJson::new(json!({
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": BASE64_URL_SAFE_NO_PAD.encode(x_value),
+    }));
+    jwk["d"] = Value::String(BASE64_URL_SAFE_NO_PAD.encode(d_value));
+
+    Ok(jwk)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -514,7 +528,8 @@ impl Codec {
 }
 
 fn _from_multicodec(value: &[u8]) -> Result<(Codec, &[u8])> {
-    let mut val: Cursor<Vec<u8>> = Cursor::new(value.to_owned());
+    // A u32 varint is at most 5 bytes long: only that head is copied, never the key behind it.
+    let mut val: Cursor<Vec<u8>> = Cursor::new(value[..value.len().min(5)].to_vec());
     let prefix_int = val
         .read_unsigned_varint_32()
         .kind(ErrorKind::Malformed, "Cannot read varint")?;
@@ -797,11 +812,132 @@ mod tests {
 
         let deserialized: Secret = serde_json::from_str(&serialized).unwrap();
         assert_eq!(format!("{deserialized:?}"), format!("{:?}", actual_key));
-        match deserialized.secret_material {
+        match &deserialized.secret_material {
             SecretMaterial::Base58 {
                 private_key_base58: value,
             } => assert_eq!(value, base58key),
             _ => panic!("Expected Base58 secret material"),
+        }
+    }
+    fn secret(type_: SecretType, secret_material: SecretMaterial) -> Secret {
+        Secret {
+            id: "did:example:alice#key-1".to_string(),
+            type_,
+            secret_material,
+        }
+    }
+
+    fn multibase(prefix: u8, key: &[u8]) -> String {
+        // The varint of 0x1300 and of 0x1302 take two bytes.
+        let mut bytes = vec![0x80 | (prefix & 0x7f), 0x26];
+        bytes.extend_from_slice(key);
+        format!("z{}", bs58::encode(bytes).into_string())
+    }
+
+    #[test]
+    fn secret_ed25519_2018_base58_must_be_64_bytes() {
+        for len in [0usize, 1, 31, 32, 33, 63, 65, 96] {
+            let err = secret(
+                SecretType::Ed25519VerificationKey2018,
+                SecretMaterial::Base58 {
+                    private_key_base58: bs58::encode(vec![7u8; len]).into_string(),
+                },
+            )
+            .as_key_pair()
+            .unwrap_err();
+
+            assert_eq!(err.kind(), ErrorKind::Malformed, "length {len}");
+        }
+    }
+
+    #[test]
+    fn secret_ed25519_2020_multibase_must_be_64_bytes() {
+        // 0x1300 is the Ed25519 private key codec: a varint of 0x80 0x26.
+        for len in [0usize, 1, 31, 32, 33, 63, 65, 96] {
+            let err = secret(
+                SecretType::Ed25519VerificationKey2020,
+                SecretMaterial::Multibase {
+                    private_key_multibase: multibase(0x00, &vec![7u8; len]),
+                },
+            )
+            .as_key_pair()
+            .unwrap_err();
+
+            assert_eq!(err.kind(), ErrorKind::Malformed, "length {len}");
+        }
+    }
+
+    #[test]
+    fn secret_x25519_with_wrong_key_length_is_malformed() {
+        for len in [0usize, 1, 31, 33, 64] {
+            let err = secret(
+                SecretType::X25519KeyAgreementKey2019,
+                SecretMaterial::Base58 {
+                    private_key_base58: bs58::encode(vec![7u8; len]).into_string(),
+                },
+            )
+            .as_key_pair()
+            .unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::Malformed, "base58 length {len}");
+
+            // 0x1302 is the X25519 private key codec: a varint of 0x82 0x26.
+            let err = secret(
+                SecretType::X25519KeyAgreementKey2020,
+                SecretMaterial::Multibase {
+                    private_key_multibase: multibase(0x02, &vec![7u8; len]),
+                },
+            )
+            .as_key_pair()
+            .unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::Malformed, "multibase length {len}");
+        }
+    }
+
+    #[test]
+    fn secret_with_a_valid_64_byte_ed25519_key_still_loads() {
+        let key = bs58::decode(
+            "2b5J8uecvwAo9HUGge5NKQ7HoRNKUKCjZ7Fr4mDgWkwqATnLmZDx7Seu6NqTuFKkxuHNT27GcoxVZQCkWJhNvaUQ",
+        )
+        .into_vec()
+        .unwrap();
+        assert_eq!(key.len(), 64);
+
+        secret(
+            SecretType::Ed25519VerificationKey2020,
+            SecretMaterial::Multibase {
+                private_key_multibase: multibase(0x00, &key),
+            },
+        )
+        .as_key_pair()
+        .unwrap();
+    }
+
+    #[test]
+    fn secret_multibase_with_a_long_or_non_ascii_head_is_an_error_not_a_panic() {
+        // A varint longer than the 5 bytes of a u32, and a multibase string whose second
+        // character is not a single byte.
+        for multibase in [
+            format!("z{}", bs58::encode([0x80u8; 12]).into_string()),
+            "z".to_string(),
+            "\u{e9}6Mk".to_string(),
+        ] {
+            let err = secret(
+                SecretType::Ed25519VerificationKey2020,
+                SecretMaterial::Multibase {
+                    private_key_multibase: multibase.clone(),
+                },
+            )
+            .as_key_pair()
+            .unwrap_err();
+
+            assert!(
+                matches!(
+                    err.kind(),
+                    ErrorKind::Malformed | ErrorKind::IllegalArgument
+                ),
+                "{multibase}: {:?}",
+                err.kind()
+            );
         }
     }
 }

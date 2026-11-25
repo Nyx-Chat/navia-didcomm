@@ -10,9 +10,25 @@ use base64::Engine;
 use navia_didcomm::{
     did::{resolvers::ExampleDIDResolver, DIDDoc},
     secrets::{resolvers::ExampleSecretsResolver, SecretsResolver},
-    Message, PackEncryptedOptions, UnpackOptions,
+    Message, PackEncryptedOptions, SenderRequirement, UnpackOptions,
 };
 use serde_json::json;
+
+/// Options for a recipient or mediator that must read a message without a proven sender.
+fn allow_anonymous() -> UnpackOptions {
+    UnpackOptions {
+        sender: SenderRequirement::AllowAnonymous,
+        ..UnpackOptions::default()
+    }
+}
+
+/// Seconds since the Unix epoch, for the time fields of the messages.
+fn now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock is after the epoch")
+        .as_secs()
+}
 use test_vectors::{
     ALICE_DID, ALICE_DID_DOC, ALICE_SECRETS, BOB_DID, BOB_DID_DOC, BOB_SECRETS, CHARLIE_DID,
     CHARLIE_DID_DOC, CHARLIE_SECRETS, DAVID_DID, DAVID_DID_DOC, DAVID_SECRETS, EVE_DID,
@@ -59,6 +75,8 @@ async fn test_multi_recipient_authcrypt() {
     .to(BOB_DID.to_owned())
     .to(CHARLIE_DID.to_owned())
     .from(ALICE_DID.to_owned())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     // Pack for multiple recipients
@@ -111,8 +129,8 @@ async fn test_multi_recipient_authcrypt() {
     // Verify both got the same message
     assert_eq!(msg1.id, msg2.id);
     assert_eq!(msg1.body, msg2.body);
-    assert!(meta1.authenticated);
-    assert!(meta2.authenticated);
+    assert!(meta1.sender_proven);
+    assert!(meta2.sender_proven);
 }
 
 #[tokio::test]
@@ -169,7 +187,7 @@ async fn test_multi_recipient_anoncrypt() {
         &packed,
         &did_resolver,
         &bob_recipient_secrets,
-        &UnpackOptions::default(),
+        &allow_anonymous(),
     )
     .await
     .unwrap();
@@ -178,7 +196,7 @@ async fn test_multi_recipient_anoncrypt() {
         &packed,
         &did_resolver,
         &charlie_recipient_secrets,
-        &UnpackOptions::default(),
+        &allow_anonymous(),
     )
     .await
     .unwrap();
@@ -186,8 +204,8 @@ async fn test_multi_recipient_anoncrypt() {
     // Verify both got the same message
     assert_eq!(msg1.id, msg2.id);
     assert_eq!(msg1.body, msg2.body);
-    assert!(!meta1.authenticated);
-    assert!(!meta2.authenticated);
+    assert!(!meta1.sender_proven);
+    assert!(!meta2.sender_proven);
     assert!(meta1.anonymous_sender);
     assert!(meta2.anonymous_sender);
 }
@@ -204,6 +222,8 @@ async fn test_empty_recipients_error() {
         json!({"content": "test"}),
     )
     .from(ALICE_DID.to_owned())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     // Empty recipients array should fail
@@ -239,6 +259,8 @@ async fn test_single_recipient_still_works() {
     )
     .to(BOB_DID.to_owned())
     .from(ALICE_DID.to_owned())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     // Single recipient in array
@@ -273,7 +295,7 @@ async fn test_single_recipient_still_works() {
     .unwrap();
 
     assert_eq!(msg.id, "test-single");
-    assert!(meta.authenticated);
+    assert!(meta.sender_proven);
 }
 
 #[tokio::test]
@@ -291,6 +313,8 @@ async fn test_duplicate_recipients() {
     )
     .to(BOB_DID.to_owned())
     .from(ALICE_DID.to_owned())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     // Same recipient appears twice in the array
@@ -350,6 +374,8 @@ async fn test_multi_recipient_with_same_routing_keys() {
     )
     .to(BOB_DID.to_owned())
     .from(ALICE_DID.to_owned())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     // Pack with forwarding enabled for Bob (who uses mediator1)
@@ -409,6 +435,8 @@ async fn test_multi_recipient_with_different_routing_keys() {
     .to(BOB_DID.to_owned())
     .to(CHARLIE_DID.to_owned())
     .from(ALICE_DID.to_owned())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     // Pack with forwarding enabled for both Bob and Charlie (different mediators)
@@ -515,6 +543,8 @@ async fn test_multi_recipient_mixed_key_types() {
     .to(BOB_DID.to_owned())
     .to(CHARLIE_DID.to_owned())
     .from(ALICE_DID.to_owned())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     // Pack for multiple recipients with potentially different key types
@@ -593,6 +623,8 @@ async fn test_multi_recipient_shared_first_hop_different_second_hop_with_routing
     .to(EVE_DID.to_owned())
     .to(FRANK_DID.to_owned())
     .from(ALICE_DID.to_owned())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     // Pack with forwarding enabled and routing-multi=true (default)
@@ -643,7 +675,7 @@ async fn test_multi_recipient_shared_first_hop_different_second_hop_with_routing
         packed,
         &did_resolver,
         &mediator1_secrets,
-        &UnpackOptions::default(),
+        &allow_anonymous(),
     )
     .await
     .expect("Mediator1 should be able to unpack the message");
@@ -851,7 +883,7 @@ async fn test_multi_recipient_shared_first_hop_different_second_hop_with_routing
         &mediator2_encrypted,
         &did_resolver,
         &mediator2_secrets,
-        &UnpackOptions::default(),
+        &allow_anonymous(),
     )
     .await
     .expect("Mediator2 should be able to unpack the message");
@@ -939,7 +971,7 @@ async fn test_multi_recipient_shared_first_hop_different_second_hop_with_routing
         &mediator3_encrypted,
         &did_resolver,
         &mediator3_secrets,
-        &UnpackOptions::default(),
+        &allow_anonymous(),
     )
     .await
     .expect("Mediator3 should be able to unpack the message");
@@ -980,7 +1012,7 @@ async fn test_multi_recipient_shared_first_hop_different_second_hop_with_routing
         david_msg.body,
         json!({"content": "message with routing-multi optimization"})
     );
-    assert!(david_meta.authenticated);
+    assert!(david_meta.sender_proven);
     assert_eq!(david_meta.from_prior, None);
 
     println!("✅ David successfully received the original message!");
@@ -1012,7 +1044,7 @@ async fn test_multi_recipient_shared_first_hop_different_second_hop_with_routing
         &mediator4_encrypted,
         &did_resolver,
         &mediator4_secrets,
-        &UnpackOptions::default(),
+        &allow_anonymous(),
     )
     .await
     .expect("Mediator4 should be able to unpack the message");
@@ -1053,7 +1085,7 @@ async fn test_multi_recipient_shared_first_hop_different_second_hop_with_routing
         eve_msg.body,
         json!({"content": "message with routing-multi optimization"})
     );
-    assert!(eve_meta.authenticated);
+    assert!(eve_meta.sender_proven);
 
     println!("✅ Eve successfully received the original message!");
 
@@ -1130,7 +1162,7 @@ async fn test_multi_recipient_shared_first_hop_different_second_hop_with_routing
         &frank_mediator3_encrypted,
         &did_resolver,
         &frank_mediator3_secrets,
-        &UnpackOptions::default(),
+        &allow_anonymous(),
     )
     .await
     .expect("Mediator3 should be able to unpack Frank's message");
@@ -1158,7 +1190,7 @@ async fn test_multi_recipient_shared_first_hop_different_second_hop_with_routing
         &serde_json::to_string(&frank_mediator4_encrypted).unwrap(),
         &did_resolver,
         &mediator4_secrets, // Reuse mediator4 secrets
-        &UnpackOptions::default(),
+        &allow_anonymous(),
     )
     .await
     .expect("Mediator4 should be able to unpack Frank's message");
@@ -1202,7 +1234,7 @@ async fn test_multi_recipient_shared_first_hop_different_second_hop_with_routing
         frank_msg.body,
         json!({"content": "message with routing-multi optimization"})
     );
-    assert!(frank_meta.authenticated);
+    assert!(frank_meta.sender_proven);
 
     println!("✅ Frank successfully received the original message!");
 
@@ -1243,6 +1275,8 @@ async fn test_multi_recipient_shared_first_hop_without_routing_multi() {
     .to(EVE_DID.to_owned())
     .to(FRANK_DID.to_owned())
     .from(ALICE_DID.to_owned())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     // Pack with forwarding enabled but routing-multi=false
@@ -1314,6 +1348,8 @@ async fn test_all_recipients_can_unpack_same_message() {
     .to(CHARLIE_DID.to_owned())
     .to(DAVID_DID.to_owned())
     .from(ALICE_DID.to_owned())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     // Pack for all three recipients
@@ -1383,9 +1419,9 @@ async fn test_all_recipients_can_unpack_same_message() {
     );
 
     // All should have authenticated metadata
-    assert!(bob_meta.authenticated);
-    assert!(charlie_meta.authenticated);
-    assert!(david_meta.authenticated);
+    assert!(bob_meta.sender_proven);
+    assert!(charlie_meta.sender_proven);
+    assert!(david_meta.sender_proven);
 
     println!("✅ All 3 recipients successfully unpacked the same message");
 }
@@ -1424,6 +1460,8 @@ async fn test_multi_recipient_mixed_direct_and_routed() {
     .to(CHARLIE_DID.to_owned())
     .to(DAVID_DID.to_owned())
     .from(ALICE_DID.to_owned())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     // Pack with forwarding enabled
@@ -1489,6 +1527,8 @@ async fn test_multi_recipient_varying_routing_depths() {
     .to(CHARLIE_DID.to_owned())
     .to(DAVID_DID.to_owned())
     .from(ALICE_DID.to_owned())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     // Pack with forwarding enabled
@@ -1536,6 +1576,8 @@ async fn test_mediators_cannot_decrypt_content() {
     )
     .to(BOB_DID.to_owned())
     .from(ALICE_DID.to_owned())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     // Pack with forwarding through mediator1
@@ -1558,14 +1600,10 @@ async fn test_mediators_cannot_decrypt_content() {
     let (packed, _) = &results[0];
 
     // Mediator can unpack the forward wrapper
-    let (mediator_msg, _) = Message::unpack(
-        packed,
-        &did_resolver,
-        &mediator_secrets,
-        &UnpackOptions::default(),
-    )
-    .await
-    .expect("Mediator should unpack forward wrapper");
+    let (mediator_msg, _) =
+        Message::unpack(packed, &did_resolver, &mediator_secrets, &allow_anonymous())
+            .await
+            .expect("Mediator should unpack forward wrapper");
 
     // Should be a forward message type
     assert!(
@@ -1616,6 +1654,8 @@ async fn test_multi_recipient_no_common_paths() {
     .to(CHARLIE_DID.to_owned())
     .to(DAVID_DID.to_owned())
     .from(ALICE_DID.to_owned())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     // Pack with forwarding enabled

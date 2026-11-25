@@ -113,6 +113,48 @@ impl Message {
         MessageBuilder::new(id, type_, body)
     }
 
+    /// Checks that the message is valid at `now` (seconds since the Unix epoch): both
+    /// `created_time` and `expires_time` must be set, `expires_time` must be after `now`,
+    /// and `created_time` must be at most `future_skew_secs` after `now`. There is no limit
+    /// on how long ago the message was created.
+    ///
+    /// `Message::unpack` calls this for a message with a proven sender. It is public so that
+    /// a protocol carried inside the message can check its own inner message the same way.
+    ///
+    /// # Errors
+    /// - `Malformed` `created_time` or `expires_time` is missing.
+    /// - `Expired` `expires_time <= now`, or `created_time > now + future_skew_secs`.
+    pub fn check_times(&self, now: u64, future_skew_secs: u64) -> Result<()> {
+        if self.created_time.is_none() || self.expires_time.is_none() {
+            Err(err_msg(
+                ErrorKind::Malformed,
+                "`created_time` and `expires_time` are required",
+            ))?;
+        }
+
+        self.check_times_if_present(now, future_skew_secs)
+    }
+
+    /// Like `check_times`, but a missing field is not checked.
+    pub(crate) fn check_times_if_present(&self, now: u64, future_skew_secs: u64) -> Result<()> {
+        if let Some(expires_time) = self.expires_time {
+            if expires_time <= now {
+                Err(err_msg(ErrorKind::Expired, "Message has expired"))?;
+            }
+        }
+
+        if let Some(created_time) = self.created_time {
+            if created_time > now.saturating_add(future_skew_secs) {
+                Err(err_msg(
+                    ErrorKind::Expired,
+                    "Message is created too far in the future",
+                ))?;
+            }
+        }
+
+        Ok(())
+    }
+
     pub(crate) fn from_str(s: &str) -> Result<Message> {
         serde_json::from_str(s).to_didcomm("Unable deserialize jwm")
     }

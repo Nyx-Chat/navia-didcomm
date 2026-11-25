@@ -36,8 +36,8 @@ pub async fn pack_encrypted(
 - **Automatic deduplication**: Silently removes duplicate recipients
 - **Routing optimization**: Minimizes messages when recipients share mediators
 - **Anoncrypt**: Set `from` to `None` for anonymous encryption
-- **Authcrypt**: Set `from` to sender DID for authenticated encryption
-- **Non-repudiation**: Set `sign_by` to add digital signature
+- **Authcrypt**: Set `from` to sender DID for authenticated encryption. The message must then carry `from` (the same DID) and both `created_time` and `expires_time`, or the call fails with `IllegalArgument`
+- **Non-repudiation**: Set `sign_by` to add digital signature (a signature alone never proves the sender on unpack)
 
 #### `pack_signed`
 Pack a message with signature only (no encryption).
@@ -96,6 +96,16 @@ pub async fn unpack(
 - Automatically detects message type (encrypted/signed/plaintext)
 - Supports multi-recipient messages (each recipient can unpack independently)
 - Provides detailed metadata about encryption, authentication, and routing
+- Fails closed on the sender: by default (`SenderRequirement::Proven`) a message is returned only when its sender is proven, see below
+
+**Sender proof.** The sender is proven when all of these hold: the message has an authcrypt layer, `from` is present, `from` is the DID of the authcrypt `skid`, and, if the message is also signed, the DID of the signer is `from`. A signature alone never proves the sender. Any mismatch between these is an error in both modes.
+
+- `SenderRequirement::Proven` (default): a message whose sender is not proven fails with `SenderNotProven`. Plaintext and bare JWS messages always fail.
+- `SenderRequirement::AllowAnonymous`: a message without a proven sender is returned with `from` and `from_prior` set to `None` and `sender_proven == false`. Use it for mediators, which open only the outer anoncrypt layer of a forward, and for anoncrypt recipients.
+
+**Time fields.** When the sender is proven, both `created_time` and `expires_time` are required (`Malformed` if either is missing). `expires_time <= now` or `created_time > now + future_skew_secs` fails with `Expired`. When the sender is not proven the fields are checked only if present. `Message::check_times(now, future_skew_secs)` applies the same rule to any message.
+
+**`from_prior`.** `iss` must be the DID of the key that signed the JWT, `sub` must be the message `from`, and `exp` and `nbf` are checked against `now` like the message times. A mismatch is `Malformed` (`iss`, `sub`) or `Expired` (`exp`, `nbf`).
 
 ### Message Types
 
@@ -163,7 +173,7 @@ pub struct PackEncryptedMetadata {
 - `from_kid`: Key ID of the sender (for authcrypt)
 - `sign_by_kid`: Key ID used for signing (if non-repudiation enabled)
 - `to_kids`: Key IDs of all recipients
-- `message_ids`: IDs of all messages in the chain (including forward messages)
+- `message_ids`: IDs of all messages in the chain, the outermost forward first and the message itself last (the order `unpack` reports them in)
 
 #### `UnpackMetadata`
 Metadata returned when unpacking a message.
@@ -172,8 +182,7 @@ Metadata returned when unpacking a message.
 #[derive(Debug, Clone)]
 pub struct UnpackMetadata {
     pub encrypted: bool,
-    pub authenticated: bool,
-    pub non_repudiation: bool,
+    pub sender_proven: bool,
     pub anonymous_sender: bool,
     pub encrypted_from_kid: Option<String>,
     pub encrypted_to_kids: Option<Vec<String>>,
@@ -186,12 +195,11 @@ pub struct UnpackMetadata {
 
 **Fields:**
 - `encrypted`: Whether message was encrypted
-- `authenticated`: Whether sender was authenticated
-- `non_repudiation`: Whether message was signed
+- `sender_proven`: Whether the sender was proven (see "Sender proof" under `unpack`). Always `true` with `SenderRequirement::Proven`
 - `anonymous_sender`: Whether sender is anonymous
 - `encrypted_from_kid`: Sender's key ID (if authenticated encryption)
 - `encrypted_to_kids`: All recipient key IDs (supports multi-recipient)
-- `sign_from`: Signer's key ID (if signed)
+- `sign_from`: Signer's key ID (if signed). A signature alone does not set `sender_proven`
 - `enc_alg_auth`: Authenticated encryption algorithm used
 - `enc_alg_anon`: Anonymous encryption algorithm used
 - `message_ids`: IDs of all messages in the chain
@@ -289,13 +297,15 @@ pub trait SecretsResolver {
 Cryptographic key material.
 
 ```rust
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Secret {
     pub id: String,
     pub type_: SecretType,
     pub secret_material: SecretMaterial,
 }
 ```
+
+`Debug` of `Secret` and `SecretMaterial` prints `<redacted>` instead of the private key. The private key strings of a `SecretMaterial` are wiped from memory when it is dropped, so the key cannot be moved out of one: borrow it (`match &secret.secret_material { ... }`). `Serialize` still writes the key, so protect what you serialize.
 
 ## Protocols
 
@@ -327,17 +337,20 @@ pub fn try_parse_forward_multi(msg: &Message) -> Option<ParsedForwardMulti<'_>>
 - Used automatically when `pack_encrypted` detects optimization opportunities
 
 #### `wrap_in_forward`
-Wrap a message for routing through mediators (standard DIDComm 2.0 protocol).
+Wrap a packed message in forward messages for routing through mediators (standard DIDComm 2.0 protocol). The library calls it from `pack_encrypted`; there is no separate "wrap if needed" function.
 
 ```rust
-pub async fn wrap_in_forward(
-    msg: Message,
-    next: String,
+pub async fn wrap_in_forward<'dr>(
+    msg: &str,
+    headers: Option<&HashMap<String, Value>>,
+    to: &str,
     routing_keys: &[String],
-    did_resolver: &dyn DIDResolver,
-    secrets_resolver: &dyn SecretsResolver,
-) -> Result<Message>
+    enc_alg_anon: &AnonCryptAlg,
+    did_resolver: &'dr (dyn DIDResolver + 'dr),
+) -> Result<(String, Vec<String>)>
 ```
+
+**Returns:** The outermost forward and the ids of the forwards, outermost first. `routing_keys` must not be empty (`IllegalArgument`).
 
 **Note:** The library automatically uses routing-multi/1.0 optimization when beneficial.
 
@@ -374,6 +387,8 @@ pub enum ErrorKind {
     SignatureCreationFailed,
     
     // Protocol errors
+    SenderNotProven,
+    Expired,
     Malformed,
     ProtocolViolation,
     UnsupportedFormat,
@@ -425,8 +440,16 @@ Options for message unpacking.
 pub struct UnpackOptions {
     pub expect_decrypt_by_all_keys: bool,
     pub unwrap_re_wrapping_forward: bool,
+    /// `Proven` (default) or `AllowAnonymous`
+    pub sender: SenderRequirement,
+    /// Seconds since the Unix epoch; `None` reads the system clock (`InvalidState` on wasm32)
+    pub now: Option<u64>,
+    /// How far ahead of `now` a `created_time` may be, 86 400 by default
+    pub future_skew_secs: u64,
 }
 ```
+
+`UnpackOptions::default()` refuses messages whose sender is not proven. Set `sender: SenderRequirement::AllowAnonymous` for the layers that cannot have a proven sender (see `unpack`).
 
 ## Supported Algorithms
 

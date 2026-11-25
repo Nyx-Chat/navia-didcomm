@@ -138,7 +138,6 @@ pub(crate) async fn _try_unpack_authcrypt<'dr, 'sr>(
         ))?;
     }
 
-    metadata.authenticated = true;
     metadata.encrypted = true;
     metadata.encrypted_from_kid = Some(from_kid.into());
 

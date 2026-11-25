@@ -16,6 +16,14 @@ use navia_didcomm::{
 };
 use serde_json::json;
 
+/// Seconds since the Unix epoch, for the time fields of the messages.
+fn now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock is after the epoch")
+        .as_secs()
+}
+
 // Create test DIDs and secrets manually to avoid import issues
 fn create_alice_did_and_secrets() -> (DIDDoc, Vec<Secret>) {
     let did_doc = DIDDoc {
@@ -231,6 +239,8 @@ async fn test_end_to_end_alice_to_bob_encrypted() {
     )
     .to(bob_did_doc.id.clone())
     .from(alice_did_doc.id.clone())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     // Alice packs the message
@@ -271,8 +281,8 @@ async fn test_end_to_end_alice_to_bob_encrypted() {
 
     // Verify metadata
     assert!(unpack_metadata.encrypted);
-    assert!(unpack_metadata.authenticated); // authcrypt when sender is provided
-    assert!(!unpack_metadata.non_repudiation); // no signing key provided
+    assert!(unpack_metadata.sender_proven); // authcrypt when sender is provided
+    assert!(unpack_metadata.sign_from.is_none()); // no signing key provided
     assert!(!unpack_metadata.anonymous_sender);
 }
 
@@ -296,6 +306,8 @@ async fn test_end_to_end_alice_to_bob_signed_encrypted() {
     )
     .to(bob_did_doc.id.clone())
     .from(alice_did_doc.id.clone())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     // Alice signs and encrypts the message
@@ -330,8 +342,8 @@ async fn test_end_to_end_alice_to_bob_signed_encrypted() {
         "This is a signed message from Alice"
     );
     assert!(unpack_metadata.encrypted);
-    assert!(unpack_metadata.authenticated);
-    assert!(unpack_metadata.non_repudiation);
+    assert!(unpack_metadata.sender_proven);
+    assert!(unpack_metadata.sign_from.is_some());
     assert_eq!(
         unpack_metadata.sign_from,
         Some("did:example:alice#key-1".to_string())
@@ -365,6 +377,8 @@ async fn test_end_to_end_multi_party_conversation() {
     )
     .to(bob_did_doc.id.clone())
     .from(alice_did_doc.id.clone())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .thid("chat-thread-123".to_string())
     .finalize();
 
@@ -411,6 +425,8 @@ async fn test_end_to_end_multi_party_conversation() {
     )
     .to(charlie_did_doc.id.clone())
     .from(bob_did_doc.id.clone())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .thid("chat-thread-123".to_string())
     .finalize();
 
@@ -458,6 +474,8 @@ async fn test_end_to_end_multi_party_conversation() {
     )
     .to(alice_did_doc.id.clone())
     .from(charlie_did_doc.id.clone())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .thid("chat-thread-123".to_string())
     .finalize();
 
@@ -530,6 +548,8 @@ async fn test_end_to_end_cross_curve_messaging() {
     )
     .to(bob_did_doc.id.clone())
     .from(alice_did_doc.id.clone())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     let (packed1, _) = alice_to_bob
@@ -573,6 +593,8 @@ async fn test_end_to_end_cross_curve_messaging() {
     )
     .to(alice_did_doc.id.clone())
     .from(bob_did_doc.id.clone())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     let (packed2, _) = bob_to_alice
@@ -624,6 +646,8 @@ async fn test_end_to_end_error_scenarios() {
     )
     .to("did:example:unknown".to_string())
     .from(alice_did_doc.id.clone())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     let result = message_to_unknown
@@ -647,6 +671,8 @@ async fn test_end_to_end_error_scenarios() {
     )
     .to(bob_did_doc.id.clone())
     .from(alice_did_doc.id.clone())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     let (packed_for_bob, _) = alice_to_bob
@@ -716,6 +742,8 @@ async fn test_end_to_end_message_threading() {
     )
     .to(bob_did_doc.id.clone())
     .from(alice_did_doc.id.clone())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .thid(thread_id.to_string())
     .finalize();
 
@@ -758,6 +786,8 @@ async fn test_end_to_end_message_threading() {
     )
     .to(alice_did_doc.id.clone())
     .from(bob_did_doc.id.clone())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .thid(thread_id.to_string())
     .finalize();
 
@@ -803,6 +833,8 @@ async fn test_end_to_end_message_threading() {
     )
     .to(bob_did_doc.id.clone())
     .from(alice_did_doc.id.clone())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .thid(thread_id.to_string())
     .finalize();
 
@@ -855,6 +887,8 @@ async fn test_comprehensive_error_scenarios() {
         json!({"content": "Message with no recipients"}),
     )
     .from(alice_did_doc.id.clone())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     let result = no_recipients_msg
@@ -878,6 +912,8 @@ async fn test_comprehensive_error_scenarios() {
     )
     .to("not-a-valid-did".to_string())
     .from(alice_did_doc.id.clone())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     let result = malformed_did_msg
@@ -901,6 +937,8 @@ async fn test_comprehensive_error_scenarios() {
     )
     .to(bob_did_doc.id.clone())
     .from(alice_did_doc.id.clone())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     let result = msg_to_sign
@@ -924,6 +962,8 @@ async fn test_comprehensive_error_scenarios() {
     )
     .to(bob_did_doc.id.clone())
     .from(alice_did_doc.id.clone())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     let (mut packed_msg, _) = valid_msg
@@ -985,6 +1025,8 @@ async fn test_message_content_edge_cases() {
     )
     .to(bob_did_doc.id.clone())
     .from(alice_did_doc.id.clone())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     let (packed_msg, _) = empty_body_msg
@@ -1022,6 +1064,8 @@ async fn test_message_content_edge_cases() {
     )
     .to(bob_did_doc.id.clone())
     .from(alice_did_doc.id.clone())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     let (packed_msg, _) = large_body_msg
@@ -1065,6 +1109,8 @@ async fn test_message_content_edge_cases() {
     )
     .to(bob_did_doc.id.clone())
     .from(alice_did_doc.id.clone())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     let (packed_msg, _) = unicode_msg
@@ -1113,6 +1159,8 @@ async fn test_resolver_edge_cases() {
     )
     .to(bob_did_doc.id.clone())
     .from(alice_did_doc.id.clone())
+    .created_time(now())
+    .expires_time(now() + 3600)
     .finalize();
 
     let result = msg
@@ -1187,6 +1235,8 @@ async fn test_sequential_message_processing() {
         )
         .to(bob_did_doc.id.clone())
         .from(alice_did_doc.id.clone())
+        .created_time(now())
+        .expires_time(now() + 3600)
         .finalize();
 
         // Alice packs the message
@@ -1259,6 +1309,8 @@ async fn test_message_size_and_performance_limits() {
         )
         .to(bob_did_doc.id.clone())
         .from(alice_did_doc.id.clone())
+        .created_time(now())
+        .expires_time(now() + 3600)
         .finalize();
 
         let start_time = std::time::Instant::now();

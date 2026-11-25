@@ -1,8 +1,11 @@
+use std::io;
+
 use askar_crypto::{
     alg::{
         ed25519::Ed25519KeyPair, k256::K256KeyPair, p256::P256KeyPair, p384::P384KeyPair,
         x25519::X25519KeyPair,
     },
+    buffer::SecretBytes,
     jwk::{FromJwk, ToJwk},
 };
 
@@ -10,13 +13,29 @@ use serde_json::Value;
 
 use crate::error::{ErrorKind, Result, ResultExt};
 
+/// Collects the serialized JWK in a buffer that is wiped when it is dropped, because the
+/// JWK of a private key holds the key.
+struct SecretWriter(SecretBytes);
+
+impl io::Write for SecretWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 pub(crate) trait FromJwkValue: FromJwk {
-    /// Import the key from a JWK string reference
+    /// Import the key from a JWK value
     fn from_jwk_value(jwk: &Value) -> Result<Self> {
-        let jwk = serde_json::to_string(jwk)
+        let mut writer = SecretWriter(SecretBytes::with_capacity(512));
+        serde_json::to_writer(&mut writer, jwk)
             .kind(ErrorKind::InvalidState, "Unable produce jwk string")?;
 
-        Self::from_jwk(&jwk).kind(ErrorKind::Malformed, "Unable produce jwk")
+        Self::from_jwk_slice(&writer.0).kind(ErrorKind::Malformed, "Unable produce jwk")
     }
 }
 

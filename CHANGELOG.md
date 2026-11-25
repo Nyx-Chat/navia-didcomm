@@ -1,3 +1,30 @@
+## 2.0.0 (unreleased)
+
+### ⚠ BREAKING CHANGES
+
+* `unpack` fails closed on the sender. `UnpackMetadata::authenticated` and `non_repudiation` are removed and replaced by `sender_proven`. By default (`UnpackOptions::sender = SenderRequirement::Proven`) a message is returned only when its sender is proven: an authcrypt layer, `from` present, `from` equal to the DID of the authcrypt `skid`, and, if the message is signed, the DID of the signer equal to `from`. A signature alone never proves the sender. Plaintext and bare JWS messages fail with the new `ErrorKind::SenderNotProven` in both modes, and so does any mismatch between `from`, `skid` and the signer. `SenderRequirement::AllowAnonymous` returns a message without a proven sender with `from` and `from_prior` set to `None` and `sender_proven == false`; mediators and anoncrypt recipients need it.
+* Time fields are enforced. New `UnpackOptions::now` (`None` reads the system clock; on `wasm32` it is an `InvalidState` error, so set it there) and `UnpackOptions::future_skew_secs` (24 hours by default), new `ErrorKind::Expired`, new public `Message::check_times(now, future_skew_secs)`. A proven sender must have both `created_time` and `expires_time` (`Malformed` if one is missing); `expires_time <= now` or `created_time > now + future_skew_secs` is `Expired`. For an unproven sender the fields are enforced only if present. `pack_encrypted` with `from` and a message that lacks `message.from` or either time field returns `IllegalArgument`.
+* `from_prior` is bound to the message: `iss` must equal the DID of the signing key and `sub` must equal the message `from` (`Malformed`), and `exp` and `nbf` are checked against `now` (`Expired`).
+* `PackEncryptedMetadata::message_ids` lists the ids of the forward messages as well, the outermost forward first and the message id last, the order `unpack` reports them in. `WrappedMessage` keeps the ids of its forwards.
+* `wrap_in_forward_if_needed` is removed. `wrap_in_forward` returns `IllegalArgument` for empty `routing_keys`.
+* `UnpackOptions` has three new fields: code that builds it with a struct literal must use `..UnpackOptions::default()`.
+* `SecretMaterial` implements `Drop` (see below), so its fields can no longer be moved out of it: borrow them.
+
+### 🐛 Bug Fixes
+
+* The sender of an unpacked message can no longer be forged with an unauthenticated `from` header: the old `authenticated` flag was set without checking `from` against the key that authenticated the message.
+* Ed25519 secret material that is not exactly 64 bytes (seed and public key) is `Malformed` instead of a panic, for base58 and multibase secrets alike; a multibase secret with a long varint prefix or a non-ASCII second character is an error instead of a panic.
+
+### 🔒 Security
+
+* `Debug` of `Secret` and `SecretMaterial` prints `<redacted>` instead of the private key.
+* The private key strings of a `SecretMaterial` are wiped from memory when it is dropped, and the temporary copies made while loading a key (decoded bytes, the JWK) are wiped as well.
+
+### ♻️ Compatibility
+
+* `navia-messaging`, `navia` and `navia-server` use this crate and have to adapt: set `UnpackOptions::sender` where a message has no proven sender, give outgoing authcrypt messages `created_time` and `expires_time`, and read `sender_proven` where they read `authenticated`.
+* The wire format of the messages is unchanged. A peer on 1.x receives what a 2.0 peer packs; a 2.0 peer refuses what a 1.x peer packed without time fields.
+
 ## [1.3.1](https://github.com/Nyx-Chat/navia-didcomm/compare/v1.3.0...v1.3.1) (2026-09-30)
 
 ### 🐛 Bug Fixes

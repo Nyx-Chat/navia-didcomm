@@ -11,9 +11,9 @@ use crate::{
     algorithms::AnonCryptAlg,
     did::{DIDCommMessagingService, DIDResolver, Service, ServiceKind},
     error::{err_msg, ErrorKind, Result, ResultContext, ResultExt},
-    message::{anoncrypt, MessagingServiceMetadata},
+    message::anoncrypt,
     utils::did::{did_or_url, is_did},
-    Attachment, AttachmentData, Message, PackEncryptedOptions,
+    Attachment, AttachmentData, Message,
 };
 
 pub use self::forward::{NextDestination, ParsedForward, ParsedForwardMulti};
@@ -314,9 +314,11 @@ pub fn try_parse_forward_multi(msg: &Message) -> Option<ParsedForwardMulti<'_>> 
 /// - `did_resolver` instance of `DIDResolver` to resolve DIDs.
 ///
 /// # Returns
-/// `Result` with the message wrapped into Forward onion or `Error`.
+/// `Result` with the message wrapped into Forward onion and the IDs of the Forward messages
+/// of the onion, the outermost (the one the first routing key opens) first, or `Error`.
 ///
 /// # Errors
+/// - `IllegalArgument` `routing_keys` is empty.
 /// - `Malformed` The message to wrap is malformed.
 /// - `DIDNotResolved` Issuer DID not found.
 /// - `DIDUrlNotFound` Issuer authentication verification method is not found.
@@ -330,6 +332,13 @@ pub async fn wrap_in_forward<'dr>(
     enc_alg_anon: &AnonCryptAlg,
     did_resolver: &'dr (dyn DIDResolver + 'dr),
 ) -> Result<(String, Vec<String>)> {
+    if routing_keys.is_empty() {
+        Err(err_msg(
+            ErrorKind::IllegalArgument,
+            "`routing_keys` must contain at least one key",
+        ))?;
+    }
+
     let mut tos = routing_keys.to_owned();
 
     let mut nexts = tos.clone();
@@ -355,53 +364,8 @@ pub async fn wrap_in_forward<'dr>(
         .0;
     }
 
+    // The loop built the innermost Forward first.
+    message_ids.reverse();
+
     Ok((msg, message_ids))
-}
-
-#[allow(dead_code)]
-pub(crate) async fn wrap_in_forward_if_needed<'dr>(
-    msg: &str,
-    to: &str,
-    did_resolver: &'dr (dyn DIDResolver + 'dr),
-    options: &PackEncryptedOptions,
-) -> Result<Option<(String, MessagingServiceMetadata, Vec<String>)>> {
-    if !options.forward {
-        return Ok(None);
-    }
-
-    let services_chain =
-        resolve_did_comm_services_chain(to, options.messaging_service.as_deref(), did_resolver)
-            .await?;
-
-    if services_chain.is_empty() {
-        return Ok(None);
-    }
-
-    let mut routing_keys = services_chain[1..]
-        .iter()
-        .map(|service| service.1.uri.clone())
-        .collect::<Vec<_>>();
-
-    routing_keys.append(&mut services_chain.last().unwrap().1.routing_keys.clone());
-
-    if routing_keys.is_empty() {
-        return Ok(None);
-    }
-
-    let (forward_msg, message_ids) = wrap_in_forward(
-        msg,
-        options.forward_headers.as_ref(),
-        to,
-        &routing_keys,
-        &options.enc_alg_anon,
-        did_resolver,
-    )
-    .await?;
-
-    let messaging_service = MessagingServiceMetadata {
-        id: services_chain.last().unwrap().0.clone(),
-        service_endpoint: services_chain.first().unwrap().1.uri.clone(),
-    };
-
-    Ok(Some((forward_msg, messaging_service, message_ids)))
 }
