@@ -1,3 +1,18 @@
+## [1.4.0](https://github.com/Nyx-Chat/navia-didcomm/compare/v1.3.1...v1.4.0) (2026-11-25)
+
+### ⚠ BREAKING CHANGES
+
+* pack and unpack signatures changed; signed and
+multi-hop routing paths are removed; expired and future frames are
+refused (Expired, NotYetValid).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01HFpNaDVEvzCzcarHY9sQLP
+
+### ✨ Features
+
+* proven senders, sealed forwards and message lifetimes ([bfcbf26](https://github.com/Nyx-Chat/navia-didcomm/commit/bfcbf266b0b506b550aac60728d1aafb3353f733))
+
 ## 2.0.0 notes: the sealed-sender wire
 
 ### ⚠ BREAKING CHANGES
