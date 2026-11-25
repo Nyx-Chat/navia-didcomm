@@ -123,7 +123,8 @@ impl Message {
     ///
     /// # Errors
     /// - `Malformed` `created_time` or `expires_time` is missing.
-    /// - `Expired` `expires_time <= now`, or `created_time > now + future_skew_secs`.
+    /// - `Expired` `expires_time <= now`.
+    /// - `NotYetValid` `created_time > now + future_skew_secs`.
     pub fn check_times(&self, now: u64, future_skew_secs: u64) -> Result<()> {
         if self.created_time.is_none() || self.expires_time.is_none() {
             Err(err_msg(
@@ -146,7 +147,7 @@ impl Message {
         if let Some(created_time) = self.created_time {
             if created_time > now.saturating_add(future_skew_secs) {
                 Err(err_msg(
-                    ErrorKind::Expired,
+                    ErrorKind::NotYetValid,
                     "Message is created too far in the future",
                 ))?;
             }

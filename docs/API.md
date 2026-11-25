@@ -103,9 +103,9 @@ pub async fn unpack(
 - `SenderRequirement::Proven` (default): a message whose sender is not proven fails with `SenderNotProven`. Plaintext and bare JWS messages always fail.
 - `SenderRequirement::AllowAnonymous`: a message without a proven sender is returned with `from` and `from_prior` set to `None` and `sender_proven == false`. Use it for mediators, which open only the outer anoncrypt layer of a forward, and for anoncrypt recipients.
 
-**Time fields.** When the sender is proven, both `created_time` and `expires_time` are required (`Malformed` if either is missing). `expires_time <= now` or `created_time > now + future_skew_secs` fails with `Expired`. When the sender is not proven the fields are checked only if present. `Message::check_times(now, future_skew_secs)` applies the same rule to any message.
+**Time fields.** When the sender is proven, both `created_time` and `expires_time` are required (`Malformed` if either is missing). `expires_time <= now` fails with `Expired`, which is permanent. `created_time > now + future_skew_secs` fails with `NotYetValid`, which depends on the receiver's clock and clears as that clock catches up or the sender's is corrected. A message that is both is `Expired`. When the sender is not proven the fields are checked only if present. `Message::check_times(now, future_skew_secs)` applies the same rule to any message.
 
-**`from_prior`.** `iss` must be the DID of the key that signed the JWT, `sub` must be the message `from`, and `exp` and `nbf` are checked against `now` like the message times. A mismatch is `Malformed` (`iss`, `sub`) or `Expired` (`exp`, `nbf`).
+**`from_prior`.** `iss` must be the DID of the key that signed the JWT, `sub` must be the message `from`, and `exp` and `nbf` are checked against `now` like the message times. A mismatch is `Malformed` (`iss`, `sub`), `Expired` (`exp <= now`) or `NotYetValid` (`nbf > now + future_skew_secs`).
 
 ### Message Types
 
@@ -389,6 +389,7 @@ pub enum ErrorKind {
     // Protocol errors
     SenderNotProven,
     Expired,
+    NotYetValid,
     Malformed,
     ProtocolViolation,
     UnsupportedFormat,

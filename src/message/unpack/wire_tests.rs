@@ -357,7 +357,7 @@ async fn proven_frame_may_be_created_up_to_the_skew_ahead() {
         .expect("a frame created exactly the skew ahead is accepted");
 
     let err = unpack_err(&proven_with_times(NOW + SKEW + 1, expires).await, &opts).await;
-    assert_eq!(err.kind(), ErrorKind::Expired);
+    assert_eq!(err.kind(), ErrorKind::NotYetValid);
 
     let strict = UnpackOptions {
         future_skew_secs: 0,
@@ -368,6 +368,15 @@ async fn proven_frame_may_be_created_up_to_the_skew_ahead() {
         .expect("a frame created now is accepted without skew");
 
     let err = unpack_err(&proven_with_times(NOW + 1, expires).await, &strict).await;
+    assert_eq!(err.kind(), ErrorKind::NotYetValid);
+}
+
+#[tokio::test]
+async fn expiry_wins_over_a_creation_time_too_far_ahead() {
+    // `expires_time` is checked first, so a frame that is both is the permanent kind.
+    let opts = options(SenderRequirement::Proven);
+
+    let err = unpack_err(&proven_with_times(NOW + SKEW + 1, NOW).await, &opts).await;
     assert_eq!(err.kind(), ErrorKind::Expired);
 }
 
@@ -446,7 +455,10 @@ async fn unproven_frame_with_times_is_checked() {
     assert_eq!(unpack_err(&expired, &opts).await.kind(), ErrorKind::Expired);
 
     let future = pack(&at(Some(NOW + SKEW + 1), None), None, None, false).await;
-    assert_eq!(unpack_err(&future, &opts).await.kind(), ErrorKind::Expired);
+    assert_eq!(
+        unpack_err(&future, &opts).await.kind(),
+        ErrorKind::NotYetValid
+    );
 
     let fresh = pack(&at(Some(NOW), Some(NOW + 1)), None, None, false).await;
     unpack(&fresh, &opts)
@@ -536,7 +548,7 @@ fn check_times_is_strict_about_missing_fields_and_exact_at_the_boundaries() {
         (at(Some(NOW), Some(NOW)), ErrorKind::Expired),
         (
             at(Some(NOW + SKEW + 1), Some(NOW + SKEW + 2)),
-            ErrorKind::Expired,
+            ErrorKind::NotYetValid,
         ),
     ] {
         let err = msg.check_times(NOW, SKEW).expect_err("must be refused");
@@ -660,7 +672,7 @@ async fn from_prior_nbf_is_checked_against_now_with_the_skew() {
     ))
     .await;
     let err = unpack_err(&packed, &opts).await;
-    assert_eq!(err.kind(), ErrorKind::Expired);
+    assert_eq!(err.kind(), ErrorKind::NotYetValid);
 }
 
 #[tokio::test]

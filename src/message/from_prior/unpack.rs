@@ -171,7 +171,8 @@ impl FromPrior {
     /// Checks `exp` and `nbf` against `now` (seconds since the Unix epoch).
     ///
     /// # Errors
-    /// - `Expired` `exp <= now`, or `nbf > now + future_skew_secs`.
+    /// - `Expired` `exp <= now`.
+    /// - `NotYetValid` `nbf > now + future_skew_secs`.
     pub fn check_times(&self, now: u64, future_skew_secs: u64) -> Result<()> {
         if let Some(exp) = self.exp {
             if exp <= now {
@@ -181,7 +182,10 @@ impl FromPrior {
 
         if let Some(nbf) = self.nbf {
             if nbf > now.saturating_add(future_skew_secs) {
-                Err(err_msg(ErrorKind::Expired, "from_prior is not valid yet"))?;
+                Err(err_msg(
+                    ErrorKind::NotYetValid,
+                    "from_prior is not valid yet",
+                ))?;
             }
         }
 
@@ -203,6 +207,47 @@ mod tests {
         },
         FromPrior,
     };
+
+    #[test]
+    fn check_times_separates_expired_from_not_yet_valid_at_the_boundaries() {
+        const NOW: u64 = 1_000_000;
+        const SKEW: u64 = 60;
+
+        let with = |exp: Option<u64>, nbf: Option<u64>| {
+            let mut builder = FromPrior::build("did:example:a".into(), "did:example:b".into());
+            if let Some(exp) = exp {
+                builder = builder.exp(exp);
+            }
+            if let Some(nbf) = nbf {
+                builder = builder.nbf(nbf);
+            }
+            builder.finalize()
+        };
+
+        with(None, None)
+            .check_times(NOW, SKEW)
+            .expect("no time claims");
+        with(Some(NOW + 1), Some(NOW + SKEW))
+            .check_times(NOW, SKEW)
+            .expect("exp one second ahead, nbf exactly the skew ahead");
+
+        for exp in [NOW - 1, NOW] {
+            let err = with(Some(exp), None)
+                .check_times(NOW, SKEW)
+                .expect_err("expired");
+            assert_eq!(err.kind(), ErrorKind::Expired, "exp {exp}");
+        }
+
+        let err = with(None, Some(NOW + SKEW + 1))
+            .check_times(NOW, SKEW)
+            .expect_err("not valid yet");
+        assert_eq!(err.kind(), ErrorKind::NotYetValid);
+
+        let err = with(Some(NOW), Some(NOW + SKEW + 1))
+            .check_times(NOW, SKEW)
+            .expect_err("both");
+        assert_eq!(err.kind(), ErrorKind::Expired, "exp is checked first");
+    }
 
     #[tokio::test]
     async fn from_prior_unpack_works() {

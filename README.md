@@ -94,10 +94,11 @@ message then comes back with `from` and `from_prior` removed.
 
 **Time fields (v2).** A message packed with `from` must have `created_time` and `expires_time`
 (`pack_encrypted` returns `IllegalArgument` otherwise). `unpack` requires both on a proven sender
-and returns `ErrorKind::Expired` when `expires_time <= now` or `created_time` is more than
-`future_skew_secs` (24 hours by default) ahead. `UnpackOptions::now` sets the clock (`None` reads
-the system clock, which `wasm32` does not have). `from_prior` is checked the same way and its `iss`
-and `sub` must match the signing key and the message `from`.
+and returns `ErrorKind::Expired` when `expires_time <= now` and `ErrorKind::NotYetValid` when
+`created_time` is more than `future_skew_secs` (24 hours by default) ahead. `Expired` is permanent;
+`NotYetValid` depends on the receiver's clock and clears as it catches up. `UnpackOptions::now`
+sets the clock (`None` reads the system clock, which `wasm32` does not have). `from_prior` is
+checked the same way and its `iss` and `sub` must match the signing key and the message `from`.
 
 ### 1. Build an Encrypted DIDComm message for the given recipient
 

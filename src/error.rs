@@ -59,8 +59,11 @@ pub enum ErrorKind {
     #[error("Sender not proven")]
     SenderNotProven,
 
-    #[error("Message expired or not yet valid")]
+    #[error("Message expired")]
     Expired,
+
+    #[error("Message not valid yet")]
+    NotYetValid,
 
     // Cryptographic Errors
     #[error("No compatible cryptographic algorithms found")]
@@ -207,6 +210,7 @@ impl Error {
                 | ErrorKind::MissingRequiredField
                 | ErrorKind::SenderNotProven
                 | ErrorKind::Expired
+                | ErrorKind::NotYetValid
                 | ErrorKind::Malformed
         )
     }
@@ -281,6 +285,7 @@ impl Error {
             | ErrorKind::IllegalArgument
             | ErrorKind::SenderNotProven
             | ErrorKind::Expired
+            | ErrorKind::NotYetValid
             | ErrorKind::MissingRequiredField
             | ErrorKind::UnsupportedFormat => {
                 debug!(
@@ -546,6 +551,17 @@ mod tests {
     use serde_json::{error::Category, Value};
 
     use super::{Error, ErrorKind};
+
+    #[test]
+    fn not_yet_valid_is_its_own_protocol_kind() {
+        assert_ne!(ErrorKind::NotYetValid, ErrorKind::Expired);
+        assert_eq!(ErrorKind::NotYetValid.to_string(), "Message not valid yet");
+
+        let err = super::err_msg(ErrorKind::NotYetValid, "early");
+        assert_eq!(err.kind(), ErrorKind::NotYetValid);
+        assert!(err.is_protocol_error());
+        assert!(!err.is_retryable());
+    }
 
     #[test]
     fn serde_eof_is_malformed() {

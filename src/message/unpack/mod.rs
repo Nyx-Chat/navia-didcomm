@@ -73,8 +73,10 @@ impl Message {
     ///   message is not encrypted at all (in both modes), or `from` is missing from an authcrypt
     ///   message or is not the DID of the authcrypt sender key or of the signer key (in both
     ///   modes).
-    /// - `Expired` `expires_time` or `from_prior` `exp` has passed, or `created_time` or
-    ///   `from_prior` `nbf` is further ahead than `options.future_skew_secs`.
+    /// - `Expired` `expires_time` or `from_prior` `exp` has passed.
+    /// - `NotYetValid` `created_time` or `from_prior` `nbf` is further ahead than
+    ///   `options.future_skew_secs`. Unlike `Expired` it clears as the receiver's clock
+    ///   catches up, or when the sender's clock is corrected.
     /// - `Malformed` Message is not a valid JWE, JWS or JWM (including empty or truncated JSON)
     ///   or has invalid encryption or signatures. This also covers an anoncrypt envelope that
     ///   carries `apu` or is addressed to other keys than the authcrypt inside it, a signature
