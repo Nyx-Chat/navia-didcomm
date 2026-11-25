@@ -1,4 +1,4 @@
-## 2.0.0 (unreleased)
+## 2.0.0 notes: the sealed-sender wire
 
 ### ⚠ BREAKING CHANGES
 
