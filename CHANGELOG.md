@@ -1,3 +1,9 @@
+## [2.1.0](https://github.com/Nyx-Chat/navia-didcomm/compare/v2.0.0...v2.1.0) (2026-11-27)
+
+### ✨ Features
+
+* pad packed plaintexts to a size ladder ([9510d17](https://github.com/Nyx-Chat/navia-didcomm/commit/9510d17d8f6ea6d0096ced92dfb6991c426eb029))
+
 ## [2.0.0](https://github.com/Nyx-Chat/navia-didcomm/compare/v1.4.0...v2.0.0) (2026-11-25)
 
 ### ⚠ BREAKING CHANGES
