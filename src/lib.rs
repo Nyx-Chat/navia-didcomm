@@ -166,8 +166,8 @@ pub mod secrets;
 pub use message::{
     Attachment, AttachmentBuilder, AttachmentData, Base64AttachmentData, FromPrior,
     JsonAttachmentData, LinksAttachmentData, Message, MessageBuilder, MessagingServiceMetadata,
-    PackEncryptedMetadata, PackEncryptedOptions, PackSignedMetadata, SenderRequirement,
-    UnpackMetadata, UnpackOptions,
+    PackEncryptedMetadata, PackEncryptedOptions, PackSignedMetadata, PadFloor, PadRequirement,
+    SenderRequirement, UnpackMetadata, UnpackOptions,
 };
 
 #[cfg(test)]

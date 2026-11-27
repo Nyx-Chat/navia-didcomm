@@ -4,6 +4,7 @@ mod message;
 mod pack_encrypted;
 mod pack_plaintext;
 mod pack_signed;
+mod padding;
 mod unpack;
 
 pub use attachment::{
@@ -16,6 +17,7 @@ pub use from_prior::FromPrior;
 pub use message::{Message, MessageBuilder};
 pub use pack_encrypted::{MessagingServiceMetadata, PackEncryptedMetadata, PackEncryptedOptions};
 pub use pack_signed::PackSignedMetadata;
+pub use padding::{PadFloor, PadRequirement};
 pub use unpack::{SenderRequirement, UnpackMetadata, UnpackOptions};
 
 pub(crate) use pack_encrypted::anoncrypt;

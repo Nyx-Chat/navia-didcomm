@@ -79,6 +79,7 @@ async fn main() {
                 enc_alg_auth: AuthCryptAlg::A256cbcHs512Ecdh1puA256kw,
                 enc_alg_anon: AnonCryptAlg::A256gcmEcdhEsA256kw,
                 use_routing_multi: true,
+                pad: None,
             },
         )
         .await

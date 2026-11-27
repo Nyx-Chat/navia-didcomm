@@ -100,6 +100,15 @@ and returns `ErrorKind::Expired` when `expires_time <= now` and `ErrorKind::NotY
 sets the clock (`None` reads the system clock, which `wasm32` does not have). `from_prior` is
 checked the same way and its `iss` and `sub` must match the signing key and the message `from`.
 
+**Size padding (v2).** `PackEncryptedOptions { pad: Some(PadFloor::Peer), ..Default::default() }`
+(or `PadFloor::Control`) pads the plaintext to a fixed ladder of sizes (2 048, 4 096, 16 384 and
+65 536 bytes, then every 32 768 bytes; at least 4 096 for `Peer` and 2 048 for `Control`) with a
+`pad` header, so that the size of the encrypted frame tells only the rung. `Message::unpack`
+removes the header, and with `UnpackOptions { pad: PadRequirement::Required, ..Default::default() }`
+refuses with `ErrorKind::Malformed` a message with a proven sender whose plaintext is off the
+ladder. A forward is never padded or checked. A message that has a `pad` header of its own is
+refused by `pack_encrypted` with `ErrorKind::IllegalArgument`. Both options default to off.
+
 ### 1. Build an Encrypted DIDComm message for the given recipient
 
 This is the most common DIDComm message to be used in most of the applications.

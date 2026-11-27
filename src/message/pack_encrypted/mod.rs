@@ -10,13 +10,14 @@ use crate::{
     algorithms::{AnonCryptAlg, AuthCryptAlg},
     did::{CachingDIDResolver, DIDResolver},
     error::{err_msg, ErrorKind, Result, ResultContext},
+    message::padding,
     protocols::routing::{
         tree::{analyze_routing_paths, group_by_common_routes},
         wrap::wrap_with_routing_tree,
     },
     secrets::SecretsResolver,
     utils::did::{did_or_url, is_did},
-    Message, PackSignedMetadata,
+    Message, PackSignedMetadata, PadFloor,
 };
 
 pub(crate) use self::anoncrypt::anoncrypt;
@@ -91,6 +92,8 @@ impl Message {
     /// # Errors
     /// - `IllegalArgument` `from` is set and the message lacks `created_time` or `expires_time`,
     ///   which a recipient needs to accept a message from a named sender.
+    /// - `IllegalArgument` The message has a `pad` header, which `options.pad` adds and
+    ///   `Message::unpack` removes.
     /// - `DIDNotResolved` Sender or recipient DID not found.
     /// - `DIDUrlNotFound` DID doesn't contain mentioned DID Urls (for ex., key id)
     /// - `SecretNotFound` Sender secret is not found.
@@ -119,8 +122,17 @@ impl Message {
         // Use caching resolver to avoid duplicate DID resolutions
         let caching_resolver = CachingDIDResolver::new(did_resolver);
 
+        // The padded clone is only for the plaintext that is encrypted: the metadata
+        // below describes `self`.
+        let padded = options
+            .pad
+            .map(|floor| padding::pad(self, floor))
+            .transpose()?;
+
         // Extract JWE-related steps to a separate method for better modularity
-        let (msg, from_kid, to_kids, sign_by_kid) = self
+        let (msg, from_kid, to_kids, sign_by_kid) = padded
+            .as_ref()
+            .unwrap_or(self)
             ._pack_jwe_envelope(
                 &unique_to,
                 from,
@@ -215,6 +227,8 @@ impl Message {
         from: Option<&str>,
         sign_by: Option<&str>,
     ) -> Result<()> {
+        padding::ensure_unpadded(self)?;
+
         // Validate that we have at least one recipient
         if to.is_empty() {
             Err(err_msg(
@@ -375,6 +389,14 @@ pub struct PackEncryptedOptions {
     /// Algorithm used for anonymous encryption
     #[serde(default)]
     pub enc_alg_anon: AnonCryptAlg,
+
+    /// Pads the plaintext with a `pad` header to the next size on the ladder of 2 048,
+    /// 4 096, 16 384 and 65 536 bytes and then every 32 768 bytes, and at least to the
+    /// floor, so that the size of the frame does not tell the length of the message.
+    /// `None` (the default) does not pad. `Message::unpack` removes the header, and refuses
+    /// an off-ladder message from a proven sender when `UnpackOptions::pad` is `Required`.
+    #[serde(default)]
+    pub pad: Option<PadFloor>,
 }
 
 impl Default for PackEncryptedOptions {
@@ -387,6 +409,7 @@ impl Default for PackEncryptedOptions {
             messaging_service: None,
             enc_alg_auth: AuthCryptAlg::default(),
             enc_alg_anon: AnonCryptAlg::default(),
+            pad: None,
         }
     }
 }
@@ -401,6 +424,7 @@ impl PackEncryptedOptions {
             messaging_service: None,
             enc_alg_auth: AuthCryptAlg::default(),
             enc_alg_anon: AnonCryptAlg::default(),
+            pad: None,
         }
     }
 }

@@ -10,7 +10,7 @@ use crate::{
     did::resolvers::ExampleDIDResolver,
     error::{Error, ErrorKind},
     jws,
-    message::authcrypt_raw,
+    message::{authcrypt_raw, padding},
     secrets::resolvers::ExampleSecretsResolver,
     test_vectors::{
         ALICE_DID, ALICE_DID_DOC, ALICE_SECRETS, BOB_DID, BOB_DID_DOC, BOB_SECRETS, CHARLIE_DID,
@@ -18,8 +18,8 @@ use crate::{
         PLAINTEXT_MSG_SIMPLE, SIGNED_MSG_ALICE_KEY_1,
     },
     utils::crypto::{AsKnownKeyPair, KnownKeyPair},
-    Message, MessageBuilder, PackEncryptedOptions, SenderRequirement, UnpackMetadata,
-    UnpackOptions,
+    Message, MessageBuilder, PackEncryptedOptions, PadFloor, PadRequirement, SenderRequirement,
+    UnpackMetadata, UnpackOptions,
 };
 
 const CREATED: u64 = 1_516_269_022;
@@ -698,4 +698,367 @@ async fn unproven_frame_carries_no_from_prior() {
     assert_eq!(unpacked.from_prior, None);
     assert_eq!(metadata.from_prior, None);
     assert_eq!(metadata.from_prior_issuer_kid, None);
+}
+
+// T23: size padding
+
+const FLOORS: [PadFloor; 2] = [PadFloor::Peer, PadFloor::Control];
+
+fn required(sender: SenderRequirement) -> UnpackOptions {
+    UnpackOptions {
+        pad: PadRequirement::Required,
+        ..options(sender)
+    }
+}
+
+/// A message from Alice to Bob whose body makes the serialization longer by about `len`
+/// bytes, with characters of one to four bytes.
+fn sized(len: usize) -> Message {
+    let text = "x\u{fc}\u{20ac}\u{1f600}".repeat(len / 10) + &"x".repeat(len % 10);
+
+    timed(
+        Message::build(
+            "wire-1".into(),
+            "https://example.com/wire/1.0/ping".into(),
+            json!({ "text": text }),
+        )
+        .to(BOB_DID.into())
+        .from(ALICE_DID.into()),
+    )
+    .finalize()
+}
+
+async fn pack_padded(
+    msg: &Message,
+    from: Option<&str>,
+    sign_by: Option<&str>,
+    pad: Option<PadFloor>,
+) -> String {
+    msg.pack_encrypted(
+        &[BOB_DID],
+        from,
+        sign_by,
+        &did_resolver(),
+        &sender_secrets(),
+        &PackEncryptedOptions {
+            pad,
+            ..PackEncryptedOptions::no_forward()
+        },
+    )
+    .await
+    .expect("pack is ok")
+    .into_iter()
+    .next()
+    .expect("one message")
+    .0
+}
+
+/// The length of the plaintext that `packed` holds and whether it carries a `pad` header.
+async fn plaintext_of(packed: &str) -> (usize, bool) {
+    let (msg, _, len) = Message::unpack_layers(
+        packed,
+        &did_resolver(),
+        &ExampleSecretsResolver::new(BOB_SECRETS.clone()),
+        &options(SenderRequirement::Proven),
+    )
+    .await
+    .expect("layers open");
+
+    (len, msg.extra_headers.contains_key(padding::PAD_HEADER))
+}
+
+/// A deterministic stream, so that a failure repeats.
+fn xorshift(state: &mut u64) -> u64 {
+    *state ^= *state << 13;
+    *state ^= *state >> 7;
+    *state ^= *state << 17;
+    *state
+}
+
+#[tokio::test]
+async fn padded_plaintext_is_on_the_ladder_for_random_bodies_and_round_trips() {
+    let unpadded = serde_json::to_string(&sized(0)).unwrap().len();
+
+    // Bodies at, just under and just over every rung that the sizes below reach, and
+    // random ones from nothing to 300 KB.
+    let mut sizes: Vec<usize> = vec![0, 1, 9, 10, 11];
+    for rung in [2_048, 4_096, 16_384, 65_536, 98_304, 131_072, 294_912] {
+        let at = rung - unpadded - 9;
+        sizes.extend([at - 1, at, at + 1]);
+    }
+    let mut state = 0x9e37_79b9_7f4a_7c15;
+    sizes.extend((0..24).map(|_| (xorshift(&mut state) % 300_001) as usize));
+
+    for floor in FLOORS {
+        for size in &sizes {
+            let msg = sized(*size);
+            let before = serde_json::to_string(&msg).unwrap().len();
+            let packed = pack_padded(&msg, Some(ALICE_DID), None, Some(floor)).await;
+
+            let (len, has_pad) = plaintext_of(&packed).await;
+            assert!(padding::on_ladder(len), "{floor:?} {size}: {len}");
+            assert!(len >= floor.bytes(), "{floor:?} {size}: {len}");
+            assert_eq!(
+                Some(len),
+                padding::target(before + 9, floor),
+                "{floor:?} {size}"
+            );
+            assert!(has_pad, "{floor:?} {size}");
+
+            let (unpacked, metadata) = unpack(&packed, &required(SenderRequirement::Proven))
+                .await
+                .unwrap_or_else(|err| panic!("{floor:?} {size}: {err}"));
+
+            assert_eq!(unpacked, msg, "{floor:?} {size}");
+            assert!(!unpacked.extra_headers.contains_key("pad"));
+            assert!(metadata.sender_proven);
+        }
+    }
+}
+
+#[tokio::test]
+async fn padded_message_is_padded_inside_the_signature_and_without_a_sender() {
+    let msg = sized(5_000);
+
+    let signed = pack_padded(&msg, Some(ALICE_DID), Some(ALICE_DID), Some(PadFloor::Peer)).await;
+    let (len, has_pad) = plaintext_of(&signed).await;
+    assert_eq!(len, 16_384);
+    assert!(has_pad);
+
+    let (unpacked, metadata) = unpack(&signed, &required(SenderRequirement::Proven))
+        .await
+        .expect("signed frame is accepted");
+    assert_eq!(unpacked, msg);
+    assert!(metadata.signed_message.is_some());
+
+    // Anoncrypt has no proven sender: it is padded, unpacked without `pad` and not checked.
+    let anonymous = pack_padded(&msg, None, None, Some(PadFloor::Control)).await;
+    let (len, has_pad) = {
+        let (padded, _, len) = Message::unpack_layers(
+            &anonymous,
+            &did_resolver(),
+            &ExampleSecretsResolver::new(BOB_SECRETS.clone()),
+            &options(SenderRequirement::AllowAnonymous),
+        )
+        .await
+        .expect("layers open");
+        (len, padded.extra_headers.contains_key("pad"))
+    };
+    assert_eq!(len, 16_384);
+    assert!(has_pad);
+
+    let (unpacked, metadata) = unpack(&anonymous, &required(SenderRequirement::AllowAnonymous))
+        .await
+        .expect("anonymous frame is accepted");
+    assert_eq!(unpacked.from, None);
+    assert!(unpacked.extra_headers.is_empty());
+    assert!(!metadata.sender_proven);
+}
+
+#[tokio::test]
+async fn pack_without_a_floor_does_not_pad() {
+    let msg = sized(0);
+    let packed = pack_padded(&msg, Some(ALICE_DID), None, None).await;
+
+    let (len, has_pad) = plaintext_of(&packed).await;
+    assert_eq!(len, serde_json::to_string(&msg).unwrap().len());
+    assert!(!has_pad);
+}
+
+#[tokio::test]
+async fn proven_message_off_the_ladder_is_malformed_when_padding_is_required() {
+    // `pack_encrypted` with no floor writes the serialization as it is, which is the
+    // frame of a packer that forgot to pad.
+    let msg = sized(100);
+    let plaintext = serde_json::to_string(&msg).unwrap();
+    assert!(!padding::on_ladder(plaintext.len()));
+    let packed = authcrypt_plaintext(&plaintext, ALICE_DID).await;
+
+    for sender in BOTH_MODES {
+        let err = unpack_err(&packed, &required(sender)).await;
+        assert_eq!(err.kind(), ErrorKind::Malformed, "{sender:?}");
+
+        let (unpacked, metadata) = unpack(&packed, &options(sender))
+            .await
+            .expect("padding is ignored by default");
+        assert_eq!(unpacked, msg, "{sender:?}");
+        assert!(metadata.sender_proven, "{sender:?}");
+
+        let (unpacked, _) = unpack(
+            &packed,
+            &UnpackOptions {
+                pad: PadRequirement::Ignore,
+                ..options(sender)
+            },
+        )
+        .await
+        .expect("padding is ignored when it is said to be");
+        assert_eq!(unpacked, msg, "{sender:?}");
+    }
+
+    let sealed = pack(&msg, Some(ALICE_DID), None, true).await;
+    let err = unpack_err(&sealed, &required(SenderRequirement::Proven)).await;
+    assert_eq!(err.kind(), ErrorKind::Malformed);
+}
+
+#[tokio::test]
+async fn off_the_ladder_check_follows_the_time_checks_and_the_sender_proof() {
+    let off_ladder = serde_json::to_string(&sized(100)).unwrap();
+
+    // Authcrypt from Alice with the `from` of Charlie: the proof refuses it first.
+    let forged = serde_json::to_string(&Message {
+        from: Some(CHARLIE_DID.into()),
+        ..sized(100)
+    })
+    .unwrap();
+    let packed = authcrypt_plaintext(&forged, ALICE_DID).await;
+    let err = unpack_err(&packed, &required(SenderRequirement::Proven)).await;
+    assert_eq!(err.kind(), ErrorKind::SenderNotProven);
+
+    // An expired message is Expired, not Malformed.
+    let packed = authcrypt_plaintext(&off_ladder, ALICE_DID).await;
+    let err = unpack_err(
+        &packed,
+        &UnpackOptions {
+            now: Some(EXPIRES),
+            ..required(SenderRequirement::Proven)
+        },
+    )
+    .await;
+    assert_eq!(err.kind(), ErrorKind::Expired);
+}
+
+#[tokio::test]
+async fn forward_passes_when_padding_is_required() {
+    // The mediator side of a padded frame: anoncrypt(forward), which has no proven sender
+    // and is not padded.
+    let msg = sized(100);
+    let packed = msg
+        .pack_encrypted(
+            &[BOB_DID],
+            Some(ALICE_DID),
+            None,
+            &did_resolver(),
+            &sender_secrets(),
+            &PackEncryptedOptions {
+                pad: Some(PadFloor::Peer),
+                ..PackEncryptedOptions::default()
+            },
+        )
+        .await
+        .expect("pack is ok")
+        .into_iter()
+        .next()
+        .expect("one message")
+        .0;
+
+    let mediator = ExampleSecretsResolver::new(crate::test_vectors::MEDIATOR1_SECRETS.clone());
+    let (forward, metadata) = Message::unpack(
+        &packed,
+        &did_resolver(),
+        &mediator,
+        &required(SenderRequirement::AllowAnonymous),
+    )
+    .await
+    .expect("the mediator opens the forward");
+
+    let parsed = crate::protocols::routing::try_parse_forward(&forward).expect("a forward");
+    assert!(!metadata.sender_proven);
+    assert!(!padding::on_ladder(
+        serde_json::to_string(&forward).unwrap().len()
+    ));
+
+    // Bob opens the frame that the forward carries: it is padded and proven.
+    let inner = serde_json::to_string(&parsed.forwarded_msg).unwrap();
+    let (unpacked, metadata) = unpack(&inner, &required(SenderRequirement::Proven))
+        .await
+        .expect("the padded frame inside the forward is accepted");
+    assert_eq!(unpacked, msg);
+    assert!(metadata.sender_proven);
+}
+
+#[tokio::test]
+async fn pad_header_is_removed_from_proven_and_anonymous_messages_whatever_the_options() {
+    let msg = timed(builder())
+        .from(ALICE_DID.into())
+        .header("pad".into(), json!("000"))
+        .finalize();
+    let mut without_pad = msg.clone();
+    without_pad.extra_headers.clear();
+    let plaintext = serde_json::to_string(&msg).unwrap();
+
+    // The plaintext is off the ladder, so this frame is for `Ignore` only.
+    let proven = authcrypt_plaintext(&plaintext, ALICE_DID).await;
+    let (unpacked, _) = unpack(&proven, &options(SenderRequirement::Proven))
+        .await
+        .expect("proven frame is accepted");
+    assert_eq!(unpacked, without_pad);
+
+    let anonymous = crate::message::anoncrypt(
+        &[BOB_DID],
+        &did_resolver(),
+        plaintext.as_bytes(),
+        &AnonCryptAlg::default(),
+    )
+    .await
+    .expect("anoncrypt is ok")
+    .0;
+    for pad in [PadRequirement::Ignore, PadRequirement::Required] {
+        let (unpacked, metadata) = unpack(
+            &anonymous,
+            &UnpackOptions {
+                pad,
+                ..options(SenderRequirement::AllowAnonymous)
+            },
+        )
+        .await
+        .expect("anonymous frame is accepted");
+
+        assert!(unpacked.extra_headers.is_empty(), "{pad:?}");
+        assert!(!metadata.sender_proven, "{pad:?}");
+    }
+}
+
+#[tokio::test]
+async fn pack_refuses_a_message_that_has_a_pad_header() {
+    let msg = timed(builder())
+        .from(ALICE_DID.into())
+        .header("pad".into(), json!("000"))
+        .finalize();
+
+    for pad in [None, Some(PadFloor::Peer), Some(PadFloor::Control)] {
+        let err = msg
+            .pack_encrypted(
+                &[BOB_DID],
+                Some(ALICE_DID),
+                None,
+                &did_resolver(),
+                &sender_secrets(),
+                &PackEncryptedOptions {
+                    pad,
+                    ..PackEncryptedOptions::no_forward()
+                },
+            )
+            .await
+            .expect_err("pack must refuse the message");
+
+        assert_eq!(err.kind(), ErrorKind::IllegalArgument, "{pad:?}");
+    }
+}
+
+#[test]
+fn padding_options_default_to_off_and_deserialize_by_name() {
+    assert_eq!(PackEncryptedOptions::default().pad, None);
+    assert_eq!(PackEncryptedOptions::no_forward().pad, None);
+    assert_eq!(UnpackOptions::default().pad, PadRequirement::Ignore);
+
+    let pack: PackEncryptedOptions = serde_json::from_str("{}").unwrap();
+    assert_eq!(pack.pad, None);
+    let pack: PackEncryptedOptions = serde_json::from_str(r#"{"pad":"Control"}"#).unwrap();
+    assert_eq!(pack.pad, Some(PadFloor::Control));
+
+    let unpack: UnpackOptions = serde_json::from_str("{}").unwrap();
+    assert_eq!(unpack.pad, PadRequirement::Ignore);
+    let unpack: UnpackOptions = serde_json::from_str(r#"{"pad":"Required"}"#).unwrap();
+    assert_eq!(unpack.pad, PadRequirement::Required);
 }

@@ -105,6 +105,8 @@ pub async fn unpack(
 
 **Time fields.** When the sender is proven, both `created_time` and `expires_time` are required (`Malformed` if either is missing). `expires_time <= now` fails with `Expired`, which is permanent. `created_time > now + future_skew_secs` fails with `NotYetValid`, which depends on the receiver's clock and clears as that clock catches up or the sender's is corrected. A message that is both is `Expired`. When the sender is not proven the fields are checked only if present. `Message::check_times(now, future_skew_secs)` applies the same rule to any message.
 
+**Padding.** A message that `pack_encrypted` padded (`PackEncryptedOptions::pad`) carries a `pad` header, which `unpack` always removes. With `UnpackOptions::pad` = `PadRequirement::Required`, a message whose sender is proven and whose plaintext length is not on the size ladder fails with `Malformed`, after the sender and time checks. A forward and any other message without a proven sender is not checked. The default is `PadRequirement::Ignore`.
+
 **`from_prior`.** `iss` must be the DID of the key that signed the JWT, `sub` must be the message `from`, and `exp` and `nbf` are checked against `now` like the message times. A mismatch is `Malformed` (`iss`, `sub`), `Expired` (`exp <= now`) or `NotYetValid` (`nbf > now + future_skew_secs`).
 
 ### Message Types
@@ -430,8 +432,13 @@ pub struct PackEncryptedOptions {
     pub enc_alg_anon: EncAlgorithm,
     pub enc_alg_auth: EncAlgorithm,
     pub protect_sender: bool,
+    /// `None` (default) does not pad; `Some(PadFloor::Peer)` (4 096 bytes) or
+    /// `Some(PadFloor::Control)` (2 048 bytes) pads the plaintext to the ladder
+    pub pad: Option<PadFloor>,
 }
 ```
+
+**Padding.** With `pad` set, `pack_encrypted` adds a `pad` header of `0` characters so that the serialized plaintext is exactly the next value of the ladder 2 048, 4 096, 16 384, 65 536, then every 32 768 bytes, and at least the floor. The padding sits inside the encryption, and a signature covers it. `pad` applies to the message itself, not to the forwards that wrap it. A message that already has a `pad` header fails with `IllegalArgument` whatever `pad` is, because `unpack` removes the header.
 
 ### `UnpackOptions`
 Options for message unpacking.
@@ -447,6 +454,8 @@ pub struct UnpackOptions {
     pub now: Option<u64>,
     /// How far ahead of `now` a `created_time` may be, 86 400 by default
     pub future_skew_secs: u64,
+    /// `Ignore` (default) or `Required`: refuse a proven message whose plaintext is off the ladder
+    pub pad: PadRequirement,
 }
 ```
 

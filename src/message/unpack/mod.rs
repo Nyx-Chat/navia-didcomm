@@ -8,7 +8,10 @@ use crate::{
     algorithms::{AnonCryptAlg, AuthCryptAlg, SignAlg},
     did::DIDResolver,
     error::{err_msg, ErrorKind, Result, ResultExt},
-    message::unpack::plaintext::_try_unpack_plaintext,
+    message::{
+        padding::{self, PadRequirement},
+        unpack::plaintext::_try_unpack_plaintext,
+    },
     protocols::routing::try_parse_forward,
     secrets::SecretsResolver,
     utils::did::did_or_url,
@@ -43,6 +46,13 @@ impl Message {
     ///   the sender claimed can be mistaken for a fact. This is for mediators and for
     ///   anonymous protocols, which must not read the sender.
     /// - In both modes a message whose `from` contradicts its authcrypt or signer key is refused.
+    ///
+    /// # Padding
+    /// A message that `Message::pack_encrypted` padded carries a `pad` header, which unpack
+    /// always removes. With `UnpackOptions::pad` = `PadRequirement::Required` a message with a
+    /// proven sender whose plaintext length is not on the size ladder is refused, so that a
+    /// packer that forgot to pad is an error and not a leak. A forward and any other message
+    /// without a proven sender is never checked.
     ///
     /// # Time
     /// A message with a proven sender must carry `created_time` and `expires_time`. They are
@@ -85,6 +95,8 @@ impl Message {
     ///   that can't be read. It also covers a message with a proven sender that lacks
     ///   `created_time` or `expires_time`, and a `from_prior` whose `iss` is not the DID of
     ///   its signing key, whose `sub` is not the message `from`, or that comes without `from`.
+    ///   With `PadRequirement::Required` it also covers a message with a proven sender whose
+    ///   plaintext is not a padded size; the sender and time checks come first.
     /// - `IllegalArgument` Multibase key material (sender, signer or recipient secret) without
     ///   the `z` prefix, or with an unknown or wrong multicodec prefix.
     /// - `SecretNotFound` No recipient secrets found, or a recipient secret was removed while
@@ -103,21 +115,34 @@ impl Message {
         secrets_resolver: &'sr (dyn SecretsResolver + 'sr),
         options: &UnpackOptions,
     ) -> Result<(Self, UnpackMetadata)> {
-        let (mut msg, mut metadata) =
+        let (mut msg, mut metadata, plaintext_len) =
             Self::unpack_layers(msg, did_resolver, secrets_resolver, options).await?;
 
+        msg.extra_headers.remove(padding::PAD_HEADER);
+
         sender::bind(&mut msg, &mut metadata, options)?;
+
+        if options.pad == PadRequirement::Required
+            && metadata.sender_proven
+            && !padding::on_ladder(plaintext_len)
+        {
+            Err(err_msg(
+                ErrorKind::Malformed,
+                "Plaintext of a message with a proven sender is not a padded size",
+            ))?;
+        }
 
         Ok((msg, metadata))
     }
 
     /// Opens the envelopes and parses the plaintext, without deciding who the sender is.
+    /// Returns the length in bytes of the plaintext that the message was parsed from.
     async fn unpack_layers<'dr, 'sr>(
         msg: &str,
         did_resolver: &'dr (dyn DIDResolver + 'dr),
         secrets_resolver: &'sr (dyn SecretsResolver + 'sr),
         options: &UnpackOptions,
-    ) -> Result<(Self, UnpackMetadata)> {
+    ) -> Result<(Self, UnpackMetadata, usize)> {
         let mut metadata = UnpackMetadata {
             encrypted: false,
             sender_proven: false,
@@ -174,6 +199,7 @@ impl Message {
 
         let signed = _try_unpack_sign(msg, did_resolver, options, &mut metadata).await?;
         let msg = signed.as_deref().unwrap_or(msg);
+        let plaintext_len = msg.len();
 
         let msg = _try_unpack_plaintext(msg, did_resolver, &mut metadata)
             .await?
@@ -187,7 +213,7 @@ impl Message {
         // Add the final message ID to the list
         metadata.message_ids.push(msg.id.clone());
 
-        Ok((msg, metadata))
+        Ok((msg, metadata, plaintext_len))
     }
 
     async fn _try_unwrap_forwarded_message<'dr, 'sr>(
@@ -249,6 +275,13 @@ pub struct UnpackOptions {
     /// the message counts as expired (clock skew of the sender). 86 400 (24 hours) by default.
     #[serde(default = "default_future_skew_secs")]
     pub future_skew_secs: u64,
+
+    /// Whether a message with a proven sender whose plaintext is not a padded size is
+    /// refused (`Required`) or accepted (`Ignore`, the default). A message without a proven
+    /// sender, such as a forward, is never checked. The `pad` header that
+    /// `PackEncryptedOptions::pad` adds is removed in both modes.
+    #[serde(default)]
+    pub pad: PadRequirement,
 }
 
 fn default_future_skew_secs() -> u64 {
@@ -278,6 +311,7 @@ impl Default for UnpackOptions {
             sender: SenderRequirement::default(),
             now: None,
             future_skew_secs: DEFAULT_FUTURE_SKEW_SECS,
+            pad: PadRequirement::default(),
         }
     }
 }
@@ -2549,7 +2583,7 @@ mod test {
 
         let secrets_resolver = ExampleSecretsResolver::new(BOB_SECRETS.clone());
 
-        let (msg, metadata) = Message::unpack_layers(
+        let (msg, metadata, _) = Message::unpack_layers(
             msg,
             &did_resolver,
             &secrets_resolver,
@@ -2576,7 +2610,7 @@ mod test {
 
         let secrets_resolver = ExampleSecretsResolver::new(BOB_SECRETS.clone());
 
-        let (msg, mut metadata) = Message::unpack_layers(
+        let (msg, mut metadata, _) = Message::unpack_layers(
             msg,
             &did_resolver,
             &secrets_resolver,
