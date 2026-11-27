@@ -489,7 +489,7 @@ impl<T> ToResult<T> for serde_json::Result<T> {
     where
         D: fmt::Display + fmt::Debug + Send + Sync + 'static,
     {
-        ResultContext::context(self.map_err(|e| e.into()), msg)
+        ResultContext::context(self.map_err(std::convert::Into::into), msg)
     }
 }
 
@@ -498,7 +498,7 @@ impl<T> ToResult<T> for bs58::decode::Result<T> {
     where
         D: fmt::Display + fmt::Debug + Send + Sync + 'static,
     {
-        ResultContext::context(self.map_err(|e| e.into()), msg)
+        ResultContext::context(self.map_err(std::convert::Into::into), msg)
     }
 }
 
@@ -507,7 +507,7 @@ impl<T> ToResult<T> for bs58::encode::Result<T> {
     where
         D: fmt::Display + fmt::Debug + Send + Sync + 'static,
     {
-        ResultContext::context(self.map_err(|e| e.into()), msg)
+        ResultContext::context(self.map_err(std::convert::Into::into), msg)
     }
 }
 

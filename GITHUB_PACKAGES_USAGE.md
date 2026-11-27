@@ -10,7 +10,7 @@ This guide explains how to use the `navia-didcomm` library in your private repos
 
 ```toml
 [dependencies]
-navia-didcomm = { version = "1.0.3", registry = "github" }
+navia-didcomm = { version = "2.1.0", registry = "github" }
 ```
 
 2. **Configure cargo authentication locally:**
@@ -83,7 +83,7 @@ env:
 To publish a new version of `navia-didcomm` to GitHub Package Registry:
 
 1. **Automatic publishing on tag:**
-   - Create and push a new tag: `git tag v1.0.4 && git push origin v1.0.4`
+   - Create and push a new tag: `git tag v2.1.1 && git push origin v2.1.1`
    - The GitHub Action will automatically publish to the package registry
 
 2. **Manual publishing:**
@@ -143,7 +143,7 @@ To use with features:
 
 ```toml
 [dependencies]
-navia-didcomm = { version = "1.0.3", registry = "github", features = ["tracing"] }
+navia-didcomm = { version = "2.1.0", registry = "github", features = ["tracing"] }
 ```
 
 ## Support

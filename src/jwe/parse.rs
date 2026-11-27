@@ -15,6 +15,7 @@ pub(crate) struct ParsedJWE<'a, 'b> {
     pub(crate) apv: Vec<u8>,
 }
 
+#[cfg(test)]
 pub(crate) fn parse<'a, 'b>(jwe: &'a str, buf: &'b mut Vec<u8>) -> Result<ParsedJWE<'a, 'b>> {
     JWE::from_str(jwe)?.parse(buf)
 }
@@ -83,11 +84,11 @@ impl<'a, 'b> ParsedJWE<'a, 'b> {
 
         match (did_comm_apu, self.protected.skid) {
             (Some(apu), Some(skid)) if apu != skid => {
-                Err(err_msg(ErrorKind::Malformed, "APU mismatch"))?
+                Err(err_msg(ErrorKind::Malformed, "APU mismatch"))?;
             }
             (None, Some(_)) => Err(err_msg(ErrorKind::Malformed, "SKID present, but no apu"))?,
             _ => (),
-        };
+        }
 
         Ok(self)
     }

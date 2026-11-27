@@ -128,6 +128,7 @@ pub(crate) enum KnownKeyPair {
     Ed25519(Ed25519KeyPair),
     X25519(X25519KeyPair),
     P256(P256KeyPair),
+    // Built by the DID resolver so P-384 keys are recognised; no signing or ECDH path reads it yet.
     #[allow(dead_code)]
     P384(P384KeyPair),
     K256(K256KeyPair),
@@ -139,7 +140,7 @@ pub(crate) trait AsKnownKeyPair {
 
     fn as_ed25519(&self) -> Result<Ed25519KeyPair> {
         if self.key_alg() != KnownKeyAlg::Ed25519 {
-            Err(err_msg(ErrorKind::InvalidState, "Unexpected key alg"))?
+            Err(err_msg(ErrorKind::InvalidState, "Unexpected key alg"))?;
         }
 
         match self.as_key_pair()? {
@@ -150,7 +151,7 @@ pub(crate) trait AsKnownKeyPair {
 
     fn as_x25519(&self) -> Result<X25519KeyPair> {
         if self.key_alg() != KnownKeyAlg::X25519 {
-            Err(err_msg(ErrorKind::InvalidState, "Unexpected key alg"))?
+            Err(err_msg(ErrorKind::InvalidState, "Unexpected key alg"))?;
         }
 
         match self.as_key_pair()? {
@@ -161,7 +162,7 @@ pub(crate) trait AsKnownKeyPair {
 
     fn as_p256(&self) -> Result<P256KeyPair> {
         if self.key_alg() != KnownKeyAlg::P256 {
-            Err(err_msg(ErrorKind::InvalidState, "Unexpected key alg"))?
+            Err(err_msg(ErrorKind::InvalidState, "Unexpected key alg"))?;
         }
 
         match self.as_key_pair()? {
@@ -170,21 +171,9 @@ pub(crate) trait AsKnownKeyPair {
         }
     }
 
-    #[allow(dead_code)]
-    fn as_p384(&self) -> Result<P384KeyPair> {
-        if self.key_alg() != KnownKeyAlg::P384 {
-            Err(err_msg(ErrorKind::InvalidState, "Unexpected key alg"))?
-        }
-
-        match self.as_key_pair()? {
-            KnownKeyPair::P384(k) => Ok(k),
-            _ => Err(err_msg(ErrorKind::InvalidState, "Unexpected key pair type"))?,
-        }
-    }
-
     fn as_k256(&self) -> Result<K256KeyPair> {
         if self.key_alg() != KnownKeyAlg::K256 {
-            Err(err_msg(ErrorKind::InvalidState, "Unexpected key alg"))?
+            Err(err_msg(ErrorKind::InvalidState, "Unexpected key alg"))?;
         }
 
         match self.as_key_pair()? {

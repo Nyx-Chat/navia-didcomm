@@ -94,8 +94,10 @@ pub(crate) async fn _try_unpack_authcrypt<'dr, 'sr>(
     // Store all recipient keys in metadata for multi-recipient support
     if let Some(existing_kids) = &metadata.encrypted_to_kids {
         // Verify that same keys used for authcrypt as for anoncrypt envelope
-        let existing_kids: std::collections::HashSet<&str> =
-            existing_kids.iter().map(|s| s.as_str()).collect();
+        let existing_kids: std::collections::HashSet<&str> = existing_kids
+            .iter()
+            .map(std::string::String::as_str)
+            .collect();
         let new_kids: std::collections::HashSet<&str> = all_to_kids.iter().copied().collect();
         if existing_kids != new_kids {
             return Err(err_msg(

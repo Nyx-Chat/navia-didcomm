@@ -338,7 +338,7 @@ async fn wrap_prefix_based_group<'dr>(
             .0;
 
             // Generate attachment ID
-            let attachment_id = format!("att-{}", inner_fwd_id);
+            let attachment_id = format!("att-{inner_fwd_id}");
 
             // Add to attachments map
             encrypted_attachments.insert(attachment_id.clone(), encrypted_for_next);
@@ -527,7 +527,7 @@ async fn wrap_divergent_paths<'dr>(
             .0;
 
             // Add to attachments
-            let attachment_id = format!("att-{}", fwd_id);
+            let attachment_id = format!("att-{fwd_id}");
             encrypted_attachments.insert(attachment_id.clone(), encrypted);
 
             // Add destination

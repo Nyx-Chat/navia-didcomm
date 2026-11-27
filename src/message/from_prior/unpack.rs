@@ -53,7 +53,7 @@ impl FromPrior {
             Err(err_msg(
                 ErrorKind::Malformed,
                 "from_prior kid is not DID URL",
-            ))?
+            ))?;
         }
 
         let did_doc = did_resolver
@@ -140,7 +140,7 @@ impl FromPrior {
         };
 
         if !valid {
-            Err(err_msg(ErrorKind::Malformed, "Wrong from_prior signature"))?
+            Err(err_msg(ErrorKind::Malformed, "Wrong from_prior signature"))?;
         }
 
         let payload = BASE64_URL_SAFE_NO_PAD.decode(parsed.payload).kind(

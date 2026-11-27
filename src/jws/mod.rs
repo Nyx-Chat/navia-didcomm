@@ -1,30 +1,20 @@
-// TODO: Remove allow
-#[allow(dead_code)]
 mod envelope;
 
-// TODO: Remove allow
-#[allow(dead_code)]
 mod parse;
 
-// TODO: Remove allow
-#[allow(dead_code)]
 mod sign;
 
-// TODO: Remove allow
-#[allow(dead_code)]
 mod verify;
 
-// TODO: Remove allow
-#[allow(unused_imports)]
-pub(crate) use envelope::{Algorithm, CompactHeader, Header, ProtectedHeader, Signature, JWS};
+pub(crate) use envelope::{Algorithm, JWS};
+#[cfg(test)]
+pub(crate) use envelope::{CompactHeader, Header, ProtectedHeader};
 
-// TODO: Remove allow
-#[allow(unused_imports)]
 pub(crate) use sign::{sign, sign_compact};
 
-// TODO: Remove allow
-#[allow(unused_imports)]
-pub(crate) use parse::{parse, parse_compact, ParsedCompactJWS, ParsedJWS};
+#[cfg(test)]
+pub(crate) use parse::parse;
+pub(crate) use parse::{parse_compact, ParsedCompactJWS, ParsedJWS};
 
 #[cfg(test)]
 mod tests {

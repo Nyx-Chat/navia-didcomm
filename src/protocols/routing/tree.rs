@@ -50,12 +50,12 @@ impl RoutingPath {
 
     /// Returns the first mediator in the chain (the one we send to)
     pub fn first_mediator(&self) -> Option<&str> {
-        self.mediators.first().map(|s| s.as_str())
+        self.mediators.first().map(std::string::String::as_str)
     }
 
     /// Returns the last mediator in the chain (closest to recipient)
     pub fn last_mediator(&self) -> Option<&str> {
-        self.mediators.last().map(|s| s.as_str())
+        self.mediators.last().map(std::string::String::as_str)
     }
 
     /// Returns the length of the mediator chain
@@ -92,7 +92,7 @@ pub struct RouteGroup {
 impl RouteGroup {
     /// Returns true if all recipients in this group share the entire routing path
     pub fn has_identical_routes(&self) -> bool {
-        self.individual_paths.values().all(|path| path.is_empty())
+        self.individual_paths.values().all(std::vec::Vec::is_empty)
     }
 
     /// Returns the total depth of routing (common + individual)
@@ -100,7 +100,7 @@ impl RouteGroup {
         let max_individual = self
             .individual_paths
             .values()
-            .map(|p| p.len())
+            .map(std::vec::Vec::len)
             .max()
             .unwrap_or(0);
         self.common_suffix.len() + max_individual
@@ -247,8 +247,8 @@ fn find_common_prefix(
 /// Finds the longest common suffix between two mediator chains.
 /// Returns the common suffix and the remaining prefixes for each chain.
 ///
-/// Note: Currently unused in favor of prefix-based grouping, but kept for future use.
-#[allow(dead_code)]
+/// Note: only the unit tests use it; the tree groups chains by common prefix.
+#[cfg(test)]
 fn find_common_suffix(
     path1: &[String],
     path2: &[String],

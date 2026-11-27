@@ -45,14 +45,14 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
         .key_agreement
         .iter()
         .filter(|kid| from_kid.map(|from_kid| kid == &from_kid).unwrap_or(true))
-        .map(|s| s.as_str())
+        .map(std::string::String::as_str)
         .collect();
 
     if from_kids.is_empty() {
         Err(err_msg(
             ErrorKind::DIDUrlNotFound,
             "No sender key agreements found",
-        ))?
+        ))?;
     }
 
     // Keep only sender keys present in the wallet
@@ -65,7 +65,7 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
         Err(err_msg(
             ErrorKind::SecretNotFound,
             "No sender secrets found",
-        ))?
+        ))?;
     }
 
     // Resolve materials for sender keys
@@ -110,7 +110,7 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
             Err(err_msg(
                 ErrorKind::DIDUrlNotFound,
                 format!("No key agreements found for recipient {to_did}"),
-            ))?
+            ))?;
         }
 
         // Resolve materials for this recipient's keys
@@ -140,7 +140,7 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
         Err(err_msg(
             ErrorKind::DIDUrlNotFound,
             "No recipient key agreements found across all recipients",
-        ))?
+        ))?;
     }
 
     let to_keys = all_to_keys;
@@ -182,7 +182,7 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
         Err(err_msg(
             ErrorKind::NoCompatibleCrypto,
             "No compatible keys found across all recipients with sender's key type",
-        ))?
+        ))?;
     }
 
     // Validate that ALL original recipients have at least one compatible key
@@ -200,7 +200,7 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
                 format!(
                     "Recipient {to_did} has no keys compatible with sender's key type ({key_alg:?}). All recipients must have compatible key types for multi-recipient encryption."
                 ),
-            ))?
+            ))?;
         }
     }
 

@@ -177,8 +177,8 @@ impl AsKnownKeyPair for VerificationMethod {
                     Err(err_msg(
                         ErrorKind::IllegalArgument,
                         "Multibase value must start with 'z'",
-                    ))?
-                };
+                    ))?;
+                }
                 let decoded_value = bs58::decode(&value[1..])
                     .into_vec()
                     .to_didcomm("Wrong multibase value in verification material")?;
@@ -188,7 +188,7 @@ impl AsKnownKeyPair for VerificationMethod {
                     Err(err_msg(
                         ErrorKind::IllegalArgument,
                         "Wrong codec in multibase secret material",
-                    ))?
+                    ))?;
                 }
                 let base64_url_value = BASE64_URL_SAFE_NO_PAD.encode(decoded_value);
 
@@ -216,7 +216,7 @@ impl AsKnownKeyPair for VerificationMethod {
                     Err(err_msg(
                         ErrorKind::IllegalArgument,
                         "Multibase must start with 'z'",
-                    ))?
+                    ))?;
                 }
                 let decoded_value = bs58::decode(&value[1..])
                     .into_vec()
@@ -227,7 +227,7 @@ impl AsKnownKeyPair for VerificationMethod {
                     Err(err_msg(
                         ErrorKind::IllegalArgument,
                         "Wrong codec in multibase secret material",
-                    ))?
+                    ))?;
                 }
                 let base64_url_value = BASE64_URL_SAFE_NO_PAD.encode(decoded_value);
 
@@ -396,7 +396,7 @@ impl AsKnownKeyPair for Secret {
                     Err(err_msg(
                         ErrorKind::IllegalArgument,
                         "Wrong codec in multibase secret material",
-                    ))?
+                    ))?;
                 }
 
                 let jwk = x25519_secret_jwk(decoded_value)?;
@@ -432,7 +432,7 @@ impl AsKnownKeyPair for Secret {
                     Err(err_msg(
                         ErrorKind::IllegalArgument,
                         "Wrong codec in multibase secret material",
-                    ))?
+                    ))?;
                 }
 
                 let jwk = ed25519_secret_jwk(decoded_value)?;
@@ -492,7 +492,7 @@ fn ed25519_secret_jwk(secret: &[u8]) -> Result<SecretJson> {
         Err(err_msg(
             ErrorKind::Malformed,
             "Ed25519 secret material must be 64 bytes: the seed and the public key",
-        ))?
+        ))?;
     }
 
     let (d_value, x_value) = secret.split_at(CURVE25519_POINT_SIZE);

@@ -349,15 +349,6 @@ mod tests {
 
     const ALICE_KID_ED25519: &str = "did:example:alice#key-1";
 
-    const ALICE_KEY_ED25519: &str = r#"
-    {
-        "kty":"OKP",
-        "d":"pFRUKkyzx4kHdJtFSnlPA9WzqkDT1HWV0xZ5OYZd2SY",
-        "crv":"Ed25519",
-        "x":"G-boxFB6vOZBu-wXkm-9Lh79I8nf9Z50cILaOgKKGww"
-    }
-    "#;
-
     const ALICE_PKEY_ED25519: &str = r#"
     {
         "kty":"OKP",
@@ -412,16 +403,6 @@ mod tests {
     "#;
 
     const ALICE_KID_P256: &str = "did:example:alice#key-2";
-
-    const ALICE_KEY_P256: &str = r#"
-    {
-        "kty":"EC",
-        "d":"7TCIdt1rhThFtWcEiLnk_COEjh1ZfQhM4bW2wz-dp4A",
-        "crv":"P-256",
-        "x":"2syLh57B-dGpa0F8p1JrO6JU7UUSF6j7qL-vfk1eOoY",
-        "y":"BgsGtI7UPsObMRjdElxLOrgAO9JggNMjOcfzEPox18w"
-    }
-    "#;
 
     const ALICE_PKEY_P256: &str = r#"
     {
@@ -478,16 +459,6 @@ mod tests {
     "#;
 
     const ALICE_KID_K256: &str = "did:example:alice#key-3";
-
-    const ALICE_KEY_K256: &str = r#"
-    {
-        "kty":"EC",
-        "d":"N3Hm1LXA210YVGGsXw_GklMwcLu_bMgnzDese6YQIyA",
-        "crv":"secp256k1",
-        "x":"aToW5EaTq5mlAf8C5ECYDSkqsJycrW-e1SQ6_GJcAOk",
-        "y":"JAGX94caA21WKreXwYUaOCYTBMrqaX4KWIlsQZTHWCk"
-    }
-    "#;
 
     const ALICE_PKEY_K256: &str = r#"
     {

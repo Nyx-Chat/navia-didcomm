@@ -34,7 +34,7 @@ pub(crate) async fn _try_unpack_plaintext<'dr, 'sr>(
 
         metadata.from_prior = Some(unpacked_from_prior);
         metadata.from_prior_issuer_kid = Some(from_prior_issuer_kid);
-    };
+    }
 
     Ok(Some(msg))
 }

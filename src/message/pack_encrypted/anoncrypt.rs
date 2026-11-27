@@ -44,14 +44,14 @@ pub(crate) async fn anoncrypt<'dr, 'sr>(
             .key_agreement
             .iter()
             .filter(|kid| to_kid.map(|to_kid| kid == &to_kid).unwrap_or(true))
-            .map(|s| s.as_str())
+            .map(std::string::String::as_str)
             .collect();
 
         if to_kids.is_empty() {
             Err(err_msg(
                 ErrorKind::DIDUrlNotFound,
                 format!("No key agreements found for recipient {to_did}"),
-            ))?
+            ))?;
         }
 
         // Resolve materials for this recipient's keys
@@ -81,7 +81,7 @@ pub(crate) async fn anoncrypt<'dr, 'sr>(
         Err(err_msg(
             ErrorKind::DIDUrlNotFound,
             "No recipient key agreements found across all recipients",
-        ))?
+        ))?;
     }
 
     let to_keys = all_to_keys;
@@ -90,7 +90,7 @@ pub(crate) async fn anoncrypt<'dr, 'sr>(
     let key_alg = to_keys
         .iter()
         .filter(|key| key.key_alg() != KnownKeyAlg::Unsupported)
-        .map(|key| key.key_alg())
+        .map(crate::utils::crypto::AsKnownKeyPair::key_alg)
         .next()
         .ok_or_else(|| {
             err_msg(
@@ -109,7 +109,7 @@ pub(crate) async fn anoncrypt<'dr, 'sr>(
         Err(err_msg(
             ErrorKind::NoCompatibleCrypto,
             "No compatible keys found across all recipients",
-        ))?
+        ))?;
     }
 
     // Validate that ALL original recipients have at least one compatible key
@@ -127,7 +127,7 @@ pub(crate) async fn anoncrypt<'dr, 'sr>(
                 format!(
                     "Recipient {to_did} has no keys of type {key_alg:?}. All recipients must have compatible key types for multi-recipient encryption."
                 ),
-            ))?
+            ))?;
         }
     }
 

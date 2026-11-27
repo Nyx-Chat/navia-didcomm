@@ -3,7 +3,6 @@
 [![License](https://img.shields.io/badge/License-Proprietary-red.svg)](./LICENSE)
 [![GitHub Package Registry](https://img.shields.io/badge/GitHub%20Packages-private-blue.svg)](https://github.com/nyx-chat/navia-didcomm/packages)
 [![Build Status](https://github.com/nyx-chat/navia-didcomm/workflows/PR%20Validation/badge.svg)](https://github.com/nyx-chat/navia-didcomm/actions)
-[![Tests](https://img.shields.io/badge/tests-228%20passing-green.svg)](https://github.com/nyx-chat/navia-didcomm/actions)
 
 **Production-ready DIDComm v2 implementation for secure peer-to-peer messaging**
 
@@ -31,7 +30,7 @@ Add to your `Cargo.toml`:
 ```toml
 [dependencies]
 # For navia (UniFFI wrapper) and mediator servers
-navia-didcomm = { git = "https://github.com/nyx-chat/navia-didcomm", version = "1.0.0" }
+navia-didcomm = { git = "https://github.com/nyx-chat/navia-didcomm", tag = "v2.1.0" }
 ```
 
 > **Note**: This is a private library for the Nyx ecosystem. Access requires authentication to the nyx-chat GitHub organization.
@@ -41,7 +40,7 @@ navia-didcomm = { git = "https://github.com/nyx-chat/navia-didcomm", version = "
 Use `cargo run --example {example-name}` for example `cargo run --example basic`.
 
 ## Assumptions and Limitations
-- Rust 2018 edition is required.
+- Rust 1.70 or newer (edition 2021) is required.
 - In order to use the library, `SecretsResolver` and `DIDResolver` traits must be implemented on the application level. 
   Implementation of that traits is out of DIDComm library scope, but we provide 2 simple implementation `ExampleDIDResolver`
   and `ExampleSecretsResolver` that allows resolve locally known DID docs and secrets for tests/demo purposes.

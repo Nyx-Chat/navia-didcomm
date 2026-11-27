@@ -8,7 +8,7 @@ Add to your `rust/navia-core/Cargo.toml`:
 
 ```toml
 [dependencies]
-navia-didcomm = { git = "https://github.com/nyx-chat/navia-didcomm", version = "1.0.0" }
+navia-didcomm = { git = "https://github.com/nyx-chat/navia-didcomm", tag = "v2.1.0" }
 ```
 
 ### Basic Usage in navia
@@ -84,7 +84,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-navia-didcomm = { git = "https://github.com/nyx-chat/navia-didcomm", version = "1.0.0" }
+navia-didcomm = { git = "https://github.com/nyx-chat/navia-didcomm", tag = "v2.1.0" }
 tokio = { version = "1.0", features = ["full"] }
 ```
 
@@ -187,7 +187,7 @@ Enable specific features in your `Cargo.toml`:
 [dependencies]
 navia-didcomm = { 
     git = "https://github.com/nyx-chat/navia-didcomm", 
-    version = "1.0.0",
+    tag = "v2.1.0",
     features = ["tracing"] # Optional: Enable logging/tracing support
 }
 ```

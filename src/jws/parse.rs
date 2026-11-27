@@ -11,6 +11,7 @@ pub(crate) struct ParsedJWS<'a, 'b> {
     pub(crate) protected: Vec<ProtectedHeader<'b>>,
 }
 
+#[cfg(test)]
 pub(crate) fn parse<'a, 'b>(jws: &'a str, buf: &'b mut Vec<Vec<u8>>) -> Result<ParsedJWS<'a, 'b>> {
     JWS::from_str(jws)?.parse(buf)
 }

@@ -67,7 +67,7 @@ impl FromPrior {
                 Err(err_msg(
                     ErrorKind::IllegalArgument,
                     "from_prior issuer kid does not belong to from_prior `iss`",
-                ))?
+                ))?;
             }
 
             let kid = did_doc
@@ -83,7 +83,11 @@ impl FromPrior {
 
             vec![kid]
         } else {
-            did_doc.authentication.iter().map(|s| s.as_str()).collect()
+            did_doc
+                .authentication
+                .iter()
+                .map(std::string::String::as_str)
+                .collect()
         };
 
         let kid = *secrets_resolver
@@ -169,7 +173,7 @@ impl FromPrior {
                     ErrorKind::IllegalArgument,
                     "issuer_kid content is not DID URL",
                 ))?;
-            };
+            }
 
             if did != self.iss {
                 Err(err_msg(

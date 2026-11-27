@@ -35,7 +35,7 @@ pub(crate) async fn _try_unpack_sign<'dr>(
         Err(err_msg(
             ErrorKind::Malformed,
             "Wrong amount of signatures for jws",
-        ))?
+        ))?;
     }
 
     let alg = &parsed_jws
@@ -68,7 +68,7 @@ pub(crate) async fn _try_unpack_sign<'dr>(
         Err(err_msg(
             ErrorKind::Malformed,
             "Signer key can't be resolved to key agreement",
-        ))?
+        ))?;
     }
 
     let signer_ddoc = did_resolver
@@ -151,7 +151,7 @@ pub(crate) async fn _try_unpack_sign<'dr>(
     };
 
     if !valid {
-        Err(err_msg(ErrorKind::Malformed, "Wrong signature"))?
+        Err(err_msg(ErrorKind::Malformed, "Wrong signature"))?;
     }
 
     // TODO: More precise error conversion

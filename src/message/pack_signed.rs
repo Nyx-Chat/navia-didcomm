@@ -72,7 +72,11 @@ impl Message {
 
             vec![key_id]
         } else {
-            did_doc.authentication.iter().map(|s| s.as_str()).collect()
+            did_doc
+                .authentication
+                .iter()
+                .map(std::string::String::as_str)
+                .collect()
         };
 
         let key_id = *secrets_resolver

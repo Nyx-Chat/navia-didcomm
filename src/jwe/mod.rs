@@ -1,29 +1,17 @@
-// TODO: remove allow
-#[allow(dead_code)]
 mod encrypt;
 
-// TODO: remove allow
-#[allow(dead_code)]
 mod decrypt;
 
-// TODO: remove allow
-#[allow(dead_code)]
 mod parse;
 
-// TODO: remove allow
-#[allow(dead_code)]
 pub(crate) mod envelope;
 
-// TODO: remove allow
-#[allow(unused_imports)]
 pub(crate) use encrypt::encrypt;
 
-// TODO: remove allow
-#[allow(unused_imports)]
-pub(crate) use parse::{parse, ParsedJWE};
+#[cfg(test)]
+pub(crate) use parse::parse;
+pub(crate) use parse::ParsedJWE;
 
-// TODO: remove allow
-#[allow(unused_imports)]
 pub(crate) use envelope::{Algorithm, EncAlgorithm};
 
 #[cfg(test)]
