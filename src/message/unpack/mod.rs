@@ -21,6 +21,7 @@ use crate::{
 mod anoncrypt;
 mod authcrypt;
 mod plaintext;
+mod recipient_kids;
 mod sender;
 mod sign;
 
@@ -210,7 +211,6 @@ impl Message {
                 )
             })?;
 
-        // Add the final message ID to the list
         metadata.message_ids.push(msg.id.clone());
 
         Ok((msg, metadata, plaintext_len))
@@ -229,9 +229,7 @@ impl Message {
 
         if let Some(forward_msg) = try_parse_forward(&plaintext) {
             if has_key_agreement_secret(&forward_msg.next, did_resolver, secrets_resolver).await? {
-                // TODO: Think how to avoid extra serialization of forwarded_msg here.
-                // (This serializtion is a double work because forwarded_msg will then
-                // be deserialized in _try_unpack_anoncrypt.)
+                // Serialized only to be parsed again by the anoncrypt unpack of the inner message.
                 let forwarded_msg = serde_json::to_string(&forward_msg.forwarded_msg).kind(
                     ErrorKind::InvalidState,
                     "Unable serialize forwarded message",

@@ -5,7 +5,7 @@ mod unpack;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 /// `from_prior` header value as a plaintext.
-/// https://identity.foundation/didcomm-messaging/spec/#did-rotation
+/// <https://identity.foundation/didcomm-messaging/spec/#did-rotation>
 pub struct FromPrior {
     pub iss: String,
 

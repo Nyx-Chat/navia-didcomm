@@ -40,7 +40,7 @@ navia-didcomm = { git = "https://github.com/nyx-chat/navia-didcomm", tag = "v2.1
 Use `cargo run --example {example-name}` for example `cargo run --example basic`.
 
 ## Assumptions and Limitations
-- Rust 1.70 or newer (edition 2021) is required.
+- Rust 1.81 or newer (edition 2021) is required: the locked `ed25519-dalek` 2.2.0 needs it.
 - In order to use the library, `SecretsResolver` and `DIDResolver` traits must be implemented on the application level. 
   Implementation of that traits is out of DIDComm library scope, but we provide 2 simple implementation `ExampleDIDResolver`
   and `ExampleSecretsResolver` that allows resolve locally known DID docs and secrets for tests/demo purposes.

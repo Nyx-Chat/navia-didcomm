@@ -7,6 +7,7 @@ use askar_crypto::{
     kdf::ecdh_1pu::Ecdh1PU,
 };
 
+use super::recipient_kids::own_recipient_kids;
 use crate::jwe::envelope::JWE;
 use crate::{
     algorithms::AuthCryptAlg,
@@ -91,9 +92,7 @@ pub(crate) async fn _try_unpack_authcrypt<'dr, 'sr>(
         .map(|r| r.header.kid)
         .collect();
 
-    // Store all recipient keys in metadata for multi-recipient support
     if let Some(existing_kids) = &metadata.encrypted_to_kids {
-        // Verify that same keys used for authcrypt as for anoncrypt envelope
         let existing_kids: std::collections::HashSet<&str> = existing_kids
             .iter()
             .map(std::string::String::as_str)
@@ -109,41 +108,11 @@ pub(crate) async fn _try_unpack_authcrypt<'dr, 'sr>(
         metadata.encrypted_to_kids = Some(all_to_kids.iter().map(|&k| k.to_owned()).collect());
     }
 
-    // Find which keys belong to the current unpacker (multi-recipient support)
-    let to_kids_found = secrets_resolver.find_secrets(&all_to_kids).await?;
-
-    if to_kids_found.is_empty() {
-        Err(err_msg(
-            ErrorKind::SecretNotFound,
-            "No recipient secrets found for current DID",
-        ))?;
-    }
-
-    // to_kids_found already contains the key IDs we can decrypt with
-    let to_kids: Vec<&str> = to_kids_found;
-
-    // Validate that all our keys belong to the same DID
-    let to_kid = to_kids
-        .first()
-        .copied()
-        .ok_or_else(|| err_msg(ErrorKind::Malformed, "No decryptable recipient keys found"))?;
-
-    let (to_did, _) = did_or_url(to_kid);
-
-    if to_kids.iter().any(|k| {
-        let (k_did, k_url) = did_or_url(k);
-        (k_did != to_did) || (k_url.is_none())
-    }) {
-        Err(err_msg(
-            ErrorKind::Malformed,
-            "Recipient keys for current DID are malformed or can't be resolved to key agreement",
-        ))?;
-    }
+    let to_kids = own_recipient_kids(&all_to_kids, secrets_resolver).await?;
 
     metadata.encrypted = true;
     metadata.encrypted_from_kid = Some(from_kid.into());
 
-    // to_kids now contains the key IDs we can decrypt with
     let mut payload: Option<Vec<u8>> = None;
 
     for to_kid in to_kids {

@@ -1,9 +1,9 @@
-//! Set of interfaces that describe DID Document (https://www.w3.org/TR/did-core/)
+//! Set of interfaces that describe DID Document (<https://www.w3.org/TR/did-core/>)
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Represents DID Document (https://www.w3.org/TR/did-core/)
+/// Represents DID Document (<https://www.w3.org/TR/did-core/>)
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DIDDoc {
@@ -11,24 +11,24 @@ pub struct DIDDoc {
     pub id: String,
 
     /// DID URLs of verification methods used for key agreement.
-    /// See https://www.w3.org/TR/did-core/#verification-methods.
+    /// See <https://www.w3.org/TR/did-core/#verification-methods>.
     pub key_agreement: Vec<String>,
 
     /// Returns DID URLs of verification methods used for authentication.
-    /// See https://www.w3.org/TR/did-core/#authentication
+    /// See <https://www.w3.org/TR/did-core/#authentication>
     pub authentication: Vec<String>,
 
     /// All local verification methods including embedded to
     /// key agreement and authentication sections.
-    /// See https://www.w3.org/TR/did-core/#verification-methods.
+    /// See <https://www.w3.org/TR/did-core/#verification-methods>.
     pub verification_method: Vec<VerificationMethod>,
 
-    /// All services (https://www.w3.org/TR/did-core/#services)
+    /// All services (<https://www.w3.org/TR/did-core/#services>)
     pub service: Vec<Service>,
 }
 
 /// Represents verification method record in DID Document
-/// (https://www.w3.org/TR/did-core/#verification-methods).
+/// (<https://www.w3.org/TR/did-core/#verification-methods>).
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct VerificationMethod {
     pub id: String,
@@ -50,7 +50,7 @@ pub enum VerificationMethodType {
     Other,
 }
 
-/// Represents verification material (https://www.w3.org/TR/did-core/#verification-material)
+/// Represents verification material (<https://www.w3.org/TR/did-core/#verification-material>)
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum VerificationMaterial {
@@ -64,7 +64,7 @@ pub enum VerificationMaterial {
     Base58 { public_key_base58: String },
 }
 
-/// Represents service record in DID Document (https://www.w3.org/TR/did-core/#services).
+/// Represents service record in DID Document (<https://www.w3.org/TR/did-core/#services>).
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Service {
     pub id: String,
@@ -88,7 +88,7 @@ pub enum ServiceKind {
 }
 
 /// Properties for DIDCommMessagingService
-/// (https://identity.foundation/didcomm-messaging/spec/#did-document-service-endpoint).
+/// (<https://identity.foundation/didcomm-messaging/spec/#did-document-service-endpoint>).
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DIDCommMessagingService {

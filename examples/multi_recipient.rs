@@ -4,11 +4,12 @@
 //! The message is encrypted once with all recipients sharing the same ciphertext,
 //! but each recipient gets their own encrypted key in the JWE recipients array.
 
+// Each file uses only part of the shared test vectors.
 #[allow(unused_imports, dead_code)]
 #[path = "../src/test_vectors/mod.rs"]
 mod test_vectors;
 
-// Allows test vectors usage inside and outside crate
+// The shared test vectors name the crate `didcomm`.
 pub(crate) use navia_didcomm as didcomm;
 
 use navia_didcomm::{

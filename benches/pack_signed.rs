@@ -1,6 +1,7 @@
-// Allows share test vectors between unit and integration tests
+// The shared test vectors name the crate `didcomm`.
 pub(crate) use navia_didcomm as didcomm;
 
+// Each file uses only part of the shared test vectors.
 #[allow(unused_imports, dead_code)]
 #[path = "../src/test_vectors/mod.rs"]
 mod test_vectors;

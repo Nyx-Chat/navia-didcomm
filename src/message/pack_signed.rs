@@ -14,7 +14,7 @@ use crate::{
 
 impl Message {
     /// Produces `DIDComm Signed Message`
-    /// https://identity.foundation/didcomm-messaging/spec/#didcomm-signed-message.
+    /// <https://identity.foundation/didcomm-messaging/spec/#didcomm-signed-message>.
     ///
     /// Signed messages are not necessary to provide message integrity (tamper evidence),
     /// or to prove the sender to the recipient. Both of these guarantees automatically occur
@@ -41,7 +41,6 @@ impl Message {
     /// - `Unsupported` Used crypto or method is unsupported.
     /// - `InvalidState` Indicates library error.
     /// - `IOError` IO error during DID or secrets resolving
-    /// TODO: verify and update errors list
     pub async fn pack_signed<'dr, 'sr>(
         &self,
         sign_by: &str,

@@ -20,7 +20,7 @@
 
 use std::collections::HashMap;
 
-use crate::{did::DIDResolver, error::Result, utils::did::did_or_url};
+use crate::{did::DIDResolver, error::Result};
 
 use super::resolve_did_comm_services_chain;
 
@@ -70,13 +70,13 @@ pub struct RouteGroup {
     /// Recipients in this group
     pub recipients: Vec<String>,
 
-    /// Common mediator path suffix shared by all recipients in this group.
-    /// Ordered from first common mediator to last.
-    /// Example: If R1→[med1,med2] and R2→[med3,med2], common_suffix is ["med2"]
+    /// Mediators shared by all recipients in this group, ordered from first to last.
+    /// With `is_prefix_based` (what `group_by_common_routes` builds) these are the common
+    /// first hops: R1→`[med1,med2]` and R2→`[med1,med3]` share `["med1"]`. Otherwise they are the
+    /// common last hops: R1→`[med1,med2]` and R2→`[med3,med2]` share `["med2"]`.
     pub common_suffix: Vec<String>,
 
-    /// Individual paths for each recipient in this group, showing the divergent part.
-    /// Maps recipient DID to their unique mediator prefix.
+    /// Maps each recipient DID to the mediators of its chain that are not in `common_suffix`.
     pub individual_paths: HashMap<String, Vec<String>>,
 
     /// The service endpoint to send to for this group
@@ -144,14 +144,14 @@ impl RoutingTree {
 
     /// Returns the number of messages that will need to be sent
     pub fn message_count(&self) -> usize {
-        // One message per direct recipient
+        // All direct recipients share one message.
         let direct_count = if self.direct_recipients.is_empty() {
             0
         } else {
             1
         };
 
-        // For routed groups, count the number of distinct first mediators
+        // Each routed group is one message.
         let routed_count = self.routed_groups.len();
 
         direct_count + routed_count
@@ -172,14 +172,11 @@ pub async fn analyze_routing_paths<'dr>(
     let mut paths = Vec::new();
 
     for recipient in recipients {
-        let (_recipient_did, _) = did_or_url(recipient);
-
-        // Resolve the service chain for this recipient
         let services_chain =
             resolve_did_comm_services_chain(recipient, service_id, did_resolver).await?;
 
         let path = if services_chain.is_empty() {
-            // No services found - treat as direct delivery (no routing)
+            // No services found: direct delivery.
             RoutingPath {
                 recipient_did: recipient.to_string(),
                 mediators: Vec::new(),
@@ -187,20 +184,18 @@ pub async fn analyze_routing_paths<'dr>(
                 service_id: String::new(),
             }
         } else {
-            // Extract mediators from the service chain
             let mut mediators = Vec::new();
 
             // Services are ordered from outermost to innermost
             // services_chain[0] is the final recipient's service
             // services_chain[1..] are mediators (if any)
             if services_chain.len() > 1 {
-                // Add mediator URIs
                 for service in &services_chain[1..] {
                     mediators.push(service.1.uri.clone());
                 }
             }
 
-            // Also add routing_keys from the last service (closest to recipient)
+            // The last service is the one closest to the recipient.
             mediators.extend(services_chain.last().unwrap().1.routing_keys.clone());
 
             let service_endpoint = services_chain.first().unwrap().1.uri.clone();
@@ -229,7 +224,6 @@ fn find_common_prefix(
     let mut common = Vec::new();
     let min_len = path1.len().min(path2.len());
 
-    // Work forwards from the start
     for i in 0..min_len {
         if path1[i] == path2[i] {
             common.push(path1[i].clone());
@@ -244,45 +238,11 @@ fn find_common_prefix(
     (common, suffix1, suffix2)
 }
 
-/// Finds the longest common suffix between two mediator chains.
-/// Returns the common suffix and the remaining prefixes for each chain.
-///
-/// Note: only the unit tests use it; the tree groups chains by common prefix.
-#[cfg(test)]
-fn find_common_suffix(
-    path1: &[String],
-    path2: &[String],
-) -> (Vec<String>, Vec<String>, Vec<String>) {
-    let mut common = Vec::new();
-    let mut i = path1.len();
-    let mut j = path2.len();
-
-    // Work backwards from the end
-    while i > 0 && j > 0 {
-        if path1[i - 1] == path2[j - 1] {
-            common.push(path1[i - 1].clone());
-            i -= 1;
-            j -= 1;
-        } else {
-            break;
-        }
-    }
-
-    // Reverse common to get correct order (first to last)
-    common.reverse();
-
-    let prefix1 = path1[..i].to_vec();
-    let prefix2 = path2[..j].to_vec();
-
-    (common, prefix1, prefix2)
-}
-
-/// Groups routing paths by their common prefixes or suffixes to enable optimization.
-/// Tries prefix-based grouping first (for shared first hops), then falls back to suffix-based.
+/// Groups routing paths that share their first mediators. Paths without a shared first hop
+/// are not grouped; direct recipients are kept apart in `direct_recipients`.
 pub fn group_by_common_routes(paths: Vec<RoutingPath>) -> RoutingTree {
     let mut tree = RoutingTree::new();
 
-    // Separate direct recipients
     let (direct, mut routed): (Vec<_>, Vec<_>) =
         paths.into_iter().partition(|p| !p.needs_forwarding());
 
@@ -292,8 +252,6 @@ pub fn group_by_common_routes(paths: Vec<RoutingPath>) -> RoutingTree {
         return tree;
     }
 
-    // First pass: try to group by common prefix (shared first hops)
-    // This enables optimization like David and Eve scenario where they share mediator1
     while !routed.is_empty() {
         let first = routed.remove(0);
         let mut group_recipients = vec![first.recipient_did.clone()];
@@ -305,7 +263,6 @@ pub fn group_by_common_routes(paths: Vec<RoutingPath>) -> RoutingTree {
         // Initially, first recipient has no suffix (all of its path is "common prefix")
         individual_paths.insert(first.recipient_did.clone(), Vec::new());
 
-        // Find others with compatible routes (common prefix)
         let mut i = 0;
         while i < routed.len() {
             let (new_common, suffix1, suffix2) =
@@ -313,7 +270,6 @@ pub fn group_by_common_routes(paths: Vec<RoutingPath>) -> RoutingTree {
 
             // Only group if they share at least one mediator at the start
             if !new_common.is_empty() {
-                // Update the common prefix
                 common_prefix = new_common;
 
                 // Update all existing recipients' suffixes by prepending suffix1
@@ -332,7 +288,6 @@ pub fn group_by_common_routes(paths: Vec<RoutingPath>) -> RoutingTree {
                     }
                 }
 
-                // Add this recipient to the group
                 let recipient = routed.remove(i);
                 group_recipients.push(recipient.recipient_did.clone());
                 individual_paths.insert(recipient.recipient_did, suffix2);
@@ -343,11 +298,12 @@ pub fn group_by_common_routes(paths: Vec<RoutingPath>) -> RoutingTree {
 
         tree.routed_groups.push(RouteGroup {
             recipients: group_recipients,
-            common_suffix: common_prefix, // Re-use field name for common path (prefix or suffix)
+            // Holds the common prefix for prefix-based groups.
+            common_suffix: common_prefix,
             individual_paths,
             service_endpoint,
             service_id,
-            is_prefix_based: true, // New algorithm uses prefix-based grouping
+            is_prefix_based: true,
         });
     }
 
@@ -358,39 +314,53 @@ pub fn group_by_common_routes(paths: Vec<RoutingPath>) -> RoutingTree {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_find_common_suffix() {
-        let path1 = vec!["med1".to_owned(), "med2".to_owned()];
-        let path2 = vec!["med3".to_owned(), "med2".to_owned()];
-
-        let (common, prefix1, prefix2) = find_common_suffix(&path1, &path2);
-
-        assert_eq!(common, vec!["med2"]);
-        assert_eq!(prefix1, vec!["med1"]);
-        assert_eq!(prefix2, vec!["med3"]);
+    fn chain(mediators: &[&str]) -> Vec<String> {
+        mediators.iter().map(|m| (*m).to_owned()).collect()
     }
 
     #[test]
-    fn test_find_common_suffix_no_common() {
-        let path1 = vec!["med1".to_owned(), "med2".to_owned()];
-        let path2 = vec!["med3".to_owned(), "med4".to_owned()];
+    fn common_prefix_splits_the_chains() {
+        type Chains = &'static [&'static str];
+        // (path1, path2, common prefix, rest of path1, rest of path2)
+        let cases: [(Chains, Chains, Chains, Chains, Chains); 5] = [
+            (
+                &["med1", "med2"],
+                &["med1", "med3"],
+                &["med1"],
+                &["med2"],
+                &["med3"],
+            ),
+            (
+                &["med1", "med2"],
+                &["med3", "med4"],
+                &[],
+                &["med1", "med2"],
+                &["med3", "med4"],
+            ),
+            (
+                &["med1", "med2"],
+                &["med1", "med2"],
+                &["med1", "med2"],
+                &[],
+                &[],
+            ),
+            (&["med1"], &["med1", "med2"], &["med1"], &[], &["med2"]),
+            (
+                &["med1", "med2", "med3"],
+                &["med1"],
+                &["med1"],
+                &["med2", "med3"],
+                &[],
+            ),
+        ];
 
-        let (common, prefix1, prefix2) = find_common_suffix(&path1, &path2);
+        for (path1, path2, common, rest1, rest2) in cases {
+            let (actual_common, actual_rest1, actual_rest2) =
+                find_common_prefix(&chain(path1), &chain(path2));
 
-        assert!(common.is_empty());
-        assert_eq!(prefix1, path1);
-        assert_eq!(prefix2, path2);
-    }
-
-    #[test]
-    fn test_find_common_suffix_identical() {
-        let path1 = vec!["med1".to_owned(), "med2".to_owned()];
-        let path2 = vec!["med1".to_owned(), "med2".to_owned()];
-
-        let (common, prefix1, prefix2) = find_common_suffix(&path1, &path2);
-
-        assert_eq!(common, vec!["med1", "med2"]);
-        assert!(prefix1.is_empty());
-        assert!(prefix2.is_empty());
+            assert_eq!(actual_common, chain(common));
+            assert_eq!(actual_rest1, chain(rest1));
+            assert_eq!(actual_rest2, chain(rest2));
+        }
     }
 }

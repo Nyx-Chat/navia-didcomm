@@ -43,14 +43,12 @@ impl<'r> CachingDIDResolver<'r> {
 #[async_trait]
 impl<'r> DIDResolver for CachingDIDResolver<'r> {
     async fn resolve(&self, did: &str) -> Result<Option<DIDDoc>> {
-        // Check cache first
         if let Ok(cache) = self.cache.read() {
             if let Some(cached_result) = cache.get(did) {
                 return Ok(cached_result.clone());
             }
         }
 
-        // Resolve and cache the result
         #[cfg(test)]
         self.resolution_count.fetch_add(1, Ordering::Relaxed);
 

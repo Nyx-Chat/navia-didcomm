@@ -13,7 +13,7 @@ use crate::{
 
 impl FromPrior {
     /// Packs a plaintext `from_prior` value into a signed JWT.
-    /// https://identity.foundation/didcomm-messaging/spec/#did-rotation
+    /// <https://identity.foundation/didcomm-messaging/spec/#did-rotation>
     ///
     /// # Parameters
     /// - `issuer_kid` (optional) identifier of the issuer key being used to sign `from_prior` JWT value.

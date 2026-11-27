@@ -20,14 +20,14 @@ use crate::{
     utils::crypto::{AsKnownKeyPair, KnownKeyAlg, KnownKeyPair},
 };
 
+// Lenient: only the "did:" prefix and three `:`-separated parts are checked, so "did::" passes.
+// Whether to validate the method and id as well is an open question.
 pub(crate) fn is_did(did: &str) -> bool {
     let parts: Vec<_> = did.split(':').collect();
     parts.len() >= 3 && parts.first().unwrap() == &"did"
 }
 
 pub(crate) fn did_or_url(did_or_url: &str) -> (&str, Option<&str>) {
-    // TODO: does it make sense to validate DID here?
-
     match did_or_url.split_once("#") {
         Some((did, _)) => (did, Some(did_or_url)),
         None => (did_or_url, None),
@@ -790,7 +790,8 @@ mod tests {
     fn is_did_works() {
         assert!(!is_did(""));
         assert!(is_did("did:example:alice"));
-        assert!(is_did("did::")); //TODO is this ok?
+        // Pins the current lenient behaviour, not a spec decision.
+        assert!(is_did("did::"));
         assert!(!is_did("example:example:alice"));
         assert!(!is_did("example:alice"));
     }

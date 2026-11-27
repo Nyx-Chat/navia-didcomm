@@ -37,7 +37,7 @@ If you prefer using git dependencies directly:
 
 ```toml
 [dependencies]
-navia-didcomm = { git = "https://github.com/Nyx-Chat/navia-didcomm.git", tag = "v1.0.3" }
+navia-didcomm = { git = "https://github.com/Nyx-Chat/navia-didcomm.git", tag = "v2.1.0" }
 ```
 
 For private repository access, configure git to use your token:
@@ -83,8 +83,8 @@ env:
 To publish a new version of `navia-didcomm` to GitHub Package Registry:
 
 1. **Automatic publishing on tag:**
-   - Create and push a new tag: `git tag v2.1.1 && git push origin v2.1.1`
-   - The GitHub Action will automatically publish to the package registry
+   - Pushing a `vX.Y.Z` tag as a person (or with a personal access token) runs the publish workflow
+   - Tags that semantic-release pushes with `GITHUB_TOKEN` do not start workflows, so push the tag again by hand or use the manual run below
 
 2. **Manual publishing:**
    - Go to Actions tab in the repository
@@ -133,11 +133,8 @@ Build with: `docker build --build-arg GITHUB_TOKEN=$GITHUB_TOKEN .`
 
 ## Features
 
-The library supports the following optional features:
-
-- `uniffi` - Enable UniFFI bindings
-- `testvectors` - Enable test vectors support
-- `tracing` - Enable tracing/logging support
+The only feature that changes the code is `tracing`: it logs errors through the `tracing` crate.
+`uniffi` and `testvectors` are declared in `Cargo.toml` but enable nothing.
 
 To use with features:
 

@@ -8,15 +8,13 @@ use askar_crypto::{
     kdf::ecdh_es::EcdhEs,
 };
 
+use super::recipient_kids::own_recipient_kids;
 use crate::{
     algorithms::AnonCryptAlg,
     error::{err_msg, ErrorKind, Result, ResultExt},
     jwe::{self, envelope::JWE},
     secrets::SecretsResolver,
-    utils::{
-        crypto::{AsKnownKeyPair, KnownKeyPair},
-        did::did_or_url,
-    },
+    utils::crypto::{AsKnownKeyPair, KnownKeyPair},
     UnpackMetadata, UnpackOptions,
 };
 
@@ -57,43 +55,12 @@ pub(crate) async fn _try_unpack_anoncrypt<'sr>(
         .map(|r| r.header.kid)
         .collect();
 
-    // Store all recipient keys in metadata for multi-recipient support
     metadata.encrypted_to_kids = Some(all_to_kids.iter().map(|&k| k.to_owned()).collect());
     metadata.encrypted = true;
     metadata.anonymous_sender = true;
 
-    // Find which keys belong to the current unpacker (multi-recipient support)
-    let to_kids_found = secrets_resolver.find_secrets(&all_to_kids).await?;
+    let to_kids = own_recipient_kids(&all_to_kids, secrets_resolver).await?;
 
-    if to_kids_found.is_empty() {
-        Err(err_msg(
-            ErrorKind::SecretNotFound,
-            "No recipient secrets found for current DID",
-        ))?;
-    }
-
-    // to_kids_found already contains the key IDs we can decrypt with
-    let to_kids: Vec<&str> = to_kids_found;
-
-    // Validate that all our keys belong to the same DID
-    let to_kid = to_kids
-        .first()
-        .copied()
-        .ok_or_else(|| err_msg(ErrorKind::Malformed, "No decryptable recipient keys found"))?;
-
-    let (to_did, _) = did_or_url(to_kid);
-
-    if to_kids.iter().any(|k| {
-        let (k_did, k_url) = did_or_url(k);
-        (k_did != to_did) || (k_url.is_none())
-    }) {
-        Err(err_msg(
-            ErrorKind::Malformed,
-            "Recipient keys for current DID are malformed or can't be resolved to key agreement",
-        ))?;
-    }
-
-    // to_kids now contains the key IDs we can decrypt with
     let mut payload: Option<Vec<u8>> = None;
 
     for to_kid in to_kids {

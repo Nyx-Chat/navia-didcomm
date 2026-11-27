@@ -94,13 +94,9 @@ pub(crate) async fn resolve_did_comm_services_chain<'dr>(
 ) -> Result<Vec<(String, DIDCommMessagingService)>> {
     let (to_did, _) = did_or_url(to);
 
-    let service = find_did_comm_service(to_did, service_id, did_resolver).await?;
-
-    if service.is_none() {
+    let Some(mut service) = find_did_comm_service(to_did, service_id, did_resolver).await? else {
         return Ok(vec![]);
-    }
-
-    let mut service = service.unwrap();
+    };
 
     let mut services = vec![service.clone()];
     let mut service_endpoint = &service.1.uri;
@@ -119,7 +115,6 @@ pub(crate) async fn resolve_did_comm_services_chain<'dr>(
             .await?
             .ok_or_else(|| {
                 err_msg(
-                    // TODO: Think on introducing a more appropriate error kind
                     ErrorKind::InvalidState,
                     "Referenced mediator does not provide any DIDCommMessaging services",
                 )
@@ -143,7 +138,27 @@ pub(crate) fn build_forward_message(
 ) -> Result<(String, String)> {
     let body = json!({ "next": next });
 
-    forward_message_impl(forwarded_msg, body, headers)
+    // Parsed only to be serialized again together with the rest of the Forward message.
+    let attachment = Attachment::json(
+        serde_json::from_str(forwarded_msg)
+            .kind(ErrorKind::Malformed, "Unable deserialize forwarded message")?,
+    )
+    .finalize();
+
+    let message_id = generate_message_id();
+    let mut msg_builder = Message::build(message_id.clone(), FORWARD_MSG_TYPE.to_owned(), body);
+
+    if let Some(headers) = headers {
+        for (name, value) in headers {
+            msg_builder = msg_builder.header(name.to_owned(), value.to_owned());
+        }
+    }
+
+    let msg = msg_builder.attachment(attachment).finalize();
+
+    let msg_str = serde_json::to_string(&msg)
+        .kind(ErrorKind::InvalidState, "Unable serialize forward message")?;
+    Ok((msg_str, message_id))
 }
 
 /// Builds a routing-multi forward message with multiple destinations and attachments.
@@ -173,7 +188,6 @@ pub(crate) fn build_forward_message_multi(
         }
     }
 
-    // Add all attachments
     for (attachment_id, encrypted_msg) in encrypted_attachments {
         let attachment = Attachment::json(
             serde_json::from_str(&encrypted_msg)
@@ -194,40 +208,8 @@ pub(crate) fn build_forward_message_multi(
     Ok((msg_str, message_id))
 }
 
-fn forward_message_impl(
-    forwarded_msg: &str,
-    body: Value,
-    headers: Option<&HashMap<String, Value>>,
-) -> Result<(String, String)> {
-    // TODO: Think how to avoid extra deserialization of forwarded_msg here.
-    // (This deserializtion is a double work because the whole Forward message with the attachments
-    // will then be serialized.)
-    let attachment = Attachment::json(
-        serde_json::from_str(forwarded_msg)
-            .kind(ErrorKind::Malformed, "Unable deserialize forwarded message")?,
-    )
-    .finalize();
-
-    let message_id = generate_message_id();
-    let mut msg_builder = Message::build(message_id.clone(), FORWARD_MSG_TYPE.to_owned(), body);
-
-    if let Some(headers) = headers {
-        for (name, value) in headers {
-            msg_builder = msg_builder.header(name.to_owned(), value.to_owned());
-        }
-    }
-
-    msg_builder = msg_builder.attachment(attachment);
-
-    let msg = msg_builder.finalize();
-
-    let msg_str = serde_json::to_string(&msg)
-        .kind(ErrorKind::InvalidState, "Unable serialize forward message")?;
-    Ok((msg_str, message_id))
-}
-
 /// Tries to parse plaintext message into `ParsedForward` structure if the message is Forward.
-/// (https://identity.foundation/didcomm-messaging/spec/#messages)
+/// (<https://identity.foundation/didcomm-messaging/spec/#messages>)
 ///
 /// # Parameters
 /// - `msg` plaintext message to try to parse into `ParsedForward` structure
@@ -288,7 +270,6 @@ pub fn try_parse_forward_multi(msg: &Message) -> Option<ParsedForwardMulti<'_>> 
     let next = match msg.body {
         Value::Object(ref body) => match body.get("next") {
             Some(Value::Array(next_array)) => {
-                // Try to deserialize array of NextDestination objects
                 serde_json::from_value::<Vec<NextDestination>>(Value::Array(next_array.clone()))
                     .ok()
             }
@@ -301,7 +282,7 @@ pub fn try_parse_forward_multi(msg: &Message) -> Option<ParsedForwardMulti<'_>> 
 }
 
 /// Wraps an anoncrypt or authcrypt message into a Forward onion (nested Forward messages).
-/// https://identity.foundation/didcomm-messaging/spec/#messages
+/// <https://identity.foundation/didcomm-messaging/spec/#messages>
 ///
 /// # Parameters
 /// - `msg` Anoncrypt or authcrypt message to wrap into Forward onion.

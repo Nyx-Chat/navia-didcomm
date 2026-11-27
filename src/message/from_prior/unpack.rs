@@ -14,7 +14,7 @@ use base64::prelude::*;
 
 impl FromPrior {
     /// Unpacks a plaintext value from a signed `from_prior` JWT.
-    /// https://identity.foundation/didcomm-messaging/spec/#did-rotation
+    /// <https://identity.foundation/didcomm-messaging/spec/#did-rotation>
     ///
     /// # Parameters
     /// - `from_prior_jwt` signed `from_prior` JWT.

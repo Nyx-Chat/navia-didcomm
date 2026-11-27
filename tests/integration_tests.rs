@@ -24,197 +24,87 @@ fn now() -> u64 {
         .as_secs()
 }
 
-// Create test DIDs and secrets manually to avoid import issues
-fn create_alice_did_and_secrets() -> (DIDDoc, Vec<Secret>) {
-    let did_doc = DIDDoc {
-        id: "did:example:alice".to_string(),
-        verification_method: vec![
-            VerificationMethod {
-                id: "did:example:alice#key-1".to_string(),
-                type_: VerificationMethodType::JsonWebKey2020,
-                controller: "did:example:alice".to_string(),
-                verification_material: VerificationMaterial::JWK {
-                    public_key_jwk: json!({
-                        "kty": "OKP",
-                        "crv": "Ed25519",
-                        "x": "G-boxFB6vOZBu-wXkm-9Lh79I8nf9Z50cILaOgKKGww"
-                    }),
-                },
-            },
-            VerificationMethod {
-                id: "did:example:alice#key-agreement-1".to_string(),
-                type_: VerificationMethodType::JsonWebKey2020,
-                controller: "did:example:alice".to_string(),
-                verification_material: VerificationMaterial::JWK {
-                    public_key_jwk: json!({
-                        "kty": "OKP",
-                        "crv": "X25519",
-                        "x": "avH0O2Y4tqLAq8y9zpianr8ajii5m4F_mICrzNlatXs"
-                    }),
-                },
-            },
-        ],
-        authentication: vec!["did:example:alice#key-1".to_string()],
-        key_agreement: vec!["did:example:alice#key-agreement-1".to_string()],
-        service: vec![],
+/// Ed25519 and X25519 key pair of one test identity: the private `d` and public `x` of each.
+struct Keys {
+    sign_d: &'static str,
+    sign_x: &'static str,
+    agree_d: &'static str,
+    agree_x: &'static str,
+}
+
+fn did_and_secrets(name: &str, keys: &Keys) -> (DIDDoc, Vec<Secret>) {
+    let did = format!("did:example:{name}");
+    let sign_kid = format!("{did}#key-1");
+    let agree_kid = format!("{did}#key-agreement-1");
+
+    let method = |id: &str, crv: &str, x: &str| VerificationMethod {
+        id: id.to_string(),
+        type_: VerificationMethodType::JsonWebKey2020,
+        controller: did.clone(),
+        verification_material: VerificationMaterial::JWK {
+            public_key_jwk: json!({ "kty": "OKP", "crv": crv, "x": x }),
+        },
+    };
+    let secret = |id: &str, crv: &str, d: &str, x: &str| Secret {
+        id: id.to_string(),
+        type_: SecretType::JsonWebKey2020,
+        secret_material: SecretMaterial::JWK {
+            private_key_jwk: json!({ "kty": "OKP", "d": d, "crv": crv, "x": x }),
+        },
     };
 
+    let did_doc = DIDDoc {
+        id: did.clone(),
+        verification_method: vec![
+            method(&sign_kid, "Ed25519", keys.sign_x),
+            method(&agree_kid, "X25519", keys.agree_x),
+        ],
+        authentication: vec![sign_kid.clone()],
+        key_agreement: vec![agree_kid.clone()],
+        service: vec![],
+    };
     let secrets = vec![
-        Secret {
-            id: "did:example:alice#key-1".to_string(),
-            type_: SecretType::JsonWebKey2020,
-            secret_material: SecretMaterial::JWK {
-                private_key_jwk: json!({
-                    "kty": "OKP",
-                    "d": "pFRUKkyzx4kHdJtFSnlPA9WzqkDT1HWV0xZ5OYZd2SY",
-                    "crv": "Ed25519",
-                    "x": "G-boxFB6vOZBu-wXkm-9Lh79I8nf9Z50cILaOgKKGww"
-                }),
-            },
-        },
-        Secret {
-            id: "did:example:alice#key-agreement-1".to_string(),
-            type_: SecretType::JsonWebKey2020,
-            secret_material: SecretMaterial::JWK {
-                private_key_jwk: json!({
-                    "kty": "OKP",
-                    "d": "r-jK2cO3taR8LQnJB1_ikLBTAnOtShJOsHXRUWT-aZA",
-                    "crv": "X25519",
-                    "x": "avH0O2Y4tqLAq8y9zpianr8ajii5m4F_mICrzNlatXs"
-                }),
-            },
-        },
+        secret(&sign_kid, "Ed25519", keys.sign_d, keys.sign_x),
+        secret(&agree_kid, "X25519", keys.agree_d, keys.agree_x),
     ];
 
     (did_doc, secrets)
+}
+
+fn create_alice_did_and_secrets() -> (DIDDoc, Vec<Secret>) {
+    did_and_secrets(
+        "alice",
+        &Keys {
+            sign_d: "pFRUKkyzx4kHdJtFSnlPA9WzqkDT1HWV0xZ5OYZd2SY",
+            sign_x: "G-boxFB6vOZBu-wXkm-9Lh79I8nf9Z50cILaOgKKGww",
+            agree_d: "r-jK2cO3taR8LQnJB1_ikLBTAnOtShJOsHXRUWT-aZA",
+            agree_x: "avH0O2Y4tqLAq8y9zpianr8ajii5m4F_mICrzNlatXs",
+        },
+    )
 }
 
 fn create_bob_did_and_secrets() -> (DIDDoc, Vec<Secret>) {
-    let did_doc = DIDDoc {
-        id: "did:example:bob".to_string(),
-        verification_method: vec![
-            VerificationMethod {
-                id: "did:example:bob#key-1".to_string(),
-                type_: VerificationMethodType::JsonWebKey2020,
-                controller: "did:example:bob".to_string(),
-                verification_material: VerificationMaterial::JWK {
-                    public_key_jwk: json!({
-                        "kty": "OKP",
-                        "crv": "Ed25519",
-                        "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
-                    }),
-                },
-            },
-            VerificationMethod {
-                id: "did:example:bob#key-agreement-1".to_string(),
-                type_: VerificationMethodType::JsonWebKey2020,
-                controller: "did:example:bob".to_string(),
-                verification_material: VerificationMaterial::JWK {
-                    public_key_jwk: json!({
-                        "kty": "OKP",
-                        "crv": "X25519",
-                        "x": "UT9S3F5ep16KSNBBShU2wh3qSfqYjlasZimn0mB8_VM"
-                    }),
-                },
-            },
-        ],
-        authentication: vec!["did:example:bob#key-1".to_string()],
-        key_agreement: vec!["did:example:bob#key-agreement-1".to_string()],
-        service: vec![],
-    };
-
-    let secrets = vec![
-        Secret {
-            id: "did:example:bob#key-1".to_string(),
-            type_: SecretType::JsonWebKey2020,
-            secret_material: SecretMaterial::JWK {
-                private_key_jwk: json!({
-                    "kty": "OKP",
-                    "d": "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A",
-                    "crv": "Ed25519",
-                    "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
-                }),
-            },
+    did_and_secrets(
+        "bob",
+        &Keys {
+            sign_d: "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A",
+            sign_x: "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+            agree_d: "p-vteoF1gopny1HXywt76xz_uC83UUmrgszsI-ThBKk",
+            agree_x: "UT9S3F5ep16KSNBBShU2wh3qSfqYjlasZimn0mB8_VM",
         },
-        Secret {
-            id: "did:example:bob#key-agreement-1".to_string(),
-            type_: SecretType::JsonWebKey2020,
-            secret_material: SecretMaterial::JWK {
-                private_key_jwk: json!({
-                    "kty": "OKP",
-                    "d": "p-vteoF1gopny1HXywt76xz_uC83UUmrgszsI-ThBKk",
-                    "crv": "X25519",
-                    "x": "UT9S3F5ep16KSNBBShU2wh3qSfqYjlasZimn0mB8_VM"
-                }),
-            },
-        },
-    ];
-
-    (did_doc, secrets)
+    )
 }
 
 fn create_charlie_did_and_secrets() -> (DIDDoc, Vec<Secret>) {
-    let did_doc = DIDDoc {
-        id: "did:example:charlie".to_string(),
-        verification_method: vec![
-            VerificationMethod {
-                id: "did:example:charlie#key-1".to_string(),
-                type_: VerificationMethodType::JsonWebKey2020,
-                controller: "did:example:charlie".to_string(),
-                verification_material: VerificationMaterial::JWK {
-                    public_key_jwk: json!({
-                        "kty": "OKP",
-                        "crv": "Ed25519",
-                        "x": "VDXDwuGKVq91zxU6q7__jLDUq8_C5cuxECgd-1feFTE"
-                    }),
-                },
-            },
-            VerificationMethod {
-                id: "did:example:charlie#key-agreement-1".to_string(),
-                type_: VerificationMethodType::JsonWebKey2020,
-                controller: "did:example:charlie".to_string(),
-                verification_material: VerificationMaterial::JWK {
-                    public_key_jwk: json!({
-                        "kty": "OKP",
-                        "crv": "X25519",
-                        "x": "nTiVFj7DChMsETDdxd5dIzLAJbSQ4j4UG6ZU1ogLNlw"
-                    }),
-                },
-            },
-        ],
-        authentication: vec!["did:example:charlie#key-1".to_string()],
-        key_agreement: vec!["did:example:charlie#key-agreement-1".to_string()],
-        service: vec![],
-    };
-
-    let secrets = vec![
-        Secret {
-            id: "did:example:charlie#key-1".to_string(),
-            type_: SecretType::JsonWebKey2020,
-            secret_material: SecretMaterial::JWK {
-                private_key_jwk: json!({
-                    "kty": "OKP",
-                    "d": "T2azVap7CYD_kB8ilbnFYqwwYb5N-GcD6yjGEvquZXg",
-                    "crv": "Ed25519",
-                    "x": "VDXDwuGKVq91zxU6q7__jLDUq8_C5cuxECgd-1feFTE"
-                }),
-            },
+    did_and_secrets(
+        "charlie",
+        &Keys {
+            sign_d: "T2azVap7CYD_kB8ilbnFYqwwYb5N-GcD6yjGEvquZXg",
+            sign_x: "VDXDwuGKVq91zxU6q7__jLDUq8_C5cuxECgd-1feFTE",
+            agree_d: "Z-BsgFe-eCvhuZlCBX5BV2XiDE2M92gkaORCe68YdZI",
+            agree_x: "nTiVFj7DChMsETDdxd5dIzLAJbSQ4j4UG6ZU1ogLNlw",
         },
-        Secret {
-            id: "did:example:charlie#key-agreement-1".to_string(),
-            type_: SecretType::JsonWebKey2020,
-            secret_material: SecretMaterial::JWK {
-                private_key_jwk: json!({
-                    "kty": "OKP",
-                    "d": "Z-BsgFe-eCvhuZlCBX5BV2XiDE2M92gkaORCe68YdZI",
-                    "crv": "X25519",
-                    "x": "nTiVFj7DChMsETDdxd5dIzLAJbSQ4j4UG6ZU1ogLNlw"
-                }),
-            },
-        },
-    ];
-
-    (did_doc, secrets)
+    )
 }
 
 /// Test basic Alice → Bob encrypted message flow

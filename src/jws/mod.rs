@@ -24,10 +24,8 @@ mod tests {
 
     #[test]
     fn demo_works() {
-        // Identifier of Alice key
         let alice_kid = "did:example:alice#key-1";
 
-        // Alice private key
         let alice_key = Ed25519KeyPair::from_jwk(
             r#"
             {
@@ -40,7 +38,6 @@ mod tests {
         )
         .expect("Unable from_jwk");
 
-        // Alice public key
         let alice_pkey = Ed25519KeyPair::from_jwk(
             r#"
             {
@@ -52,10 +49,7 @@ mod tests {
         )
         .expect("Unable from_jwk");
 
-        // Message payload
         let payload = "Hello World!";
-
-        // Produce signed message
 
         let msg = jws::sign(
             payload.as_bytes(),
@@ -64,12 +58,8 @@ mod tests {
         )
         .expect("unable sign");
 
-        // Parse message
-
         let mut buf = vec![];
         let msg = jws::parse(&msg, &mut buf).expect("Unable parse");
-
-        // Verify signature
 
         let valid = msg
             .verify((alice_kid, &alice_pkey))

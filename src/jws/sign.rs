@@ -81,9 +81,6 @@ pub(crate) fn sign_compact<Key: KeySign>(
     let payload = BASE64_URL_SAFE_NO_PAD.encode(payload);
 
     let signature = {
-        // JWS Signing Input
-        // The input to the digital signature or MAC computation.  Its value
-        // is ASCII(BASE64URL(UTF8(JWS Protected Header)) || '.' || BASE64URL(JWS Payload)).
         let sign_input = format!("{header}.{payload}");
 
         let signature = key

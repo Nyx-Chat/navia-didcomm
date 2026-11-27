@@ -7,7 +7,6 @@ use subtle::ConstantTimeEq;
 /// This is critical for security when comparing DID key identifiers, as timing
 /// differences could leak information about valid key IDs to attackers.
 pub(crate) fn secure_string_eq(a: &str, b: &str) -> bool {
-    // First check lengths in constant time
     let len_match = a.len().ct_eq(&b.len());
 
     // If lengths don't match, still compare bytes to maintain constant time
@@ -22,7 +21,6 @@ pub(crate) fn secure_string_eq(a: &str, b: &str) -> bool {
         bytes_match &= a_byte.ct_eq(&b_byte).unwrap_u8();
     }
 
-    // Both length and bytes must match
     len_match.unwrap_u8() & bytes_match == 1
 }
 

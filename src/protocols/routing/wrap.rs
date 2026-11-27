@@ -58,10 +58,8 @@ pub async fn wrap_with_routing_tree<'dr>(
 ) -> Result<Vec<WrappedMessage>> {
     let mut wrapped_messages = Vec::new();
 
-    // Handle direct recipients (no forwarding needed)
     if !tree.direct_recipients.is_empty() {
-        // For direct recipients, use the first one's endpoint
-        // (in a real scenario, you might send to multiple endpoints)
+        // All direct recipients share the first one's endpoint, even when theirs differ.
         let first = &tree.direct_recipients[0];
         wrapped_messages.push(WrappedMessage {
             message: encrypted_msg.to_owned(),
@@ -76,7 +74,6 @@ pub async fn wrap_with_routing_tree<'dr>(
         });
     }
 
-    // Handle routed groups
     for group in &tree.routed_groups {
         let group_messages = wrap_route_group(
             encrypted_msg,
@@ -107,7 +104,6 @@ async fn wrap_route_group<'dr>(
     did_resolver: &'dr (dyn DIDResolver + 'dr),
     use_routing_multi: bool,
 ) -> Result<Vec<WrappedMessage>> {
-    // If all recipients have identical routes, simple case
     if group.has_identical_routes() {
         let (wrapped, forward_ids) = wrap_for_mediator_chain(
             encrypted_msg,
@@ -128,8 +124,7 @@ async fn wrap_route_group<'dr>(
         }]);
     }
 
-    // PREFIX-BASED OPTIMIZATION (new)
-    // When recipients share common first hops (e.g., David and Eve both through mediator1)
+    // Recipients that share their first hops, e.g. both go through mediator1.
     if group.is_prefix_based {
         return wrap_prefix_based_group(
             encrypted_msg,
@@ -142,9 +137,7 @@ async fn wrap_route_group<'dr>(
         .await;
     }
 
-    // SUFFIX-BASED (original algorithm)
-    // Complex case: recipients have divergent paths
-    // 1. First, wrap for the common suffix
+    // Recipients with divergent paths: wrap for the shared suffix, then branch per prefix.
     let (common_wrapped, common_forward_ids) = if !group.common_suffix.is_empty() {
         wrap_for_mediator_chain(
             encrypted_msg,
@@ -159,7 +152,6 @@ async fn wrap_route_group<'dr>(
         (encrypted_msg.to_owned(), Vec::new())
     };
 
-    // 2. Group recipients by their individual path prefix
     let mut path_groups: HashMap<Vec<String>, Vec<String>> = HashMap::new();
     for (recipient, path) in &group.individual_paths {
         path_groups
@@ -168,12 +160,10 @@ async fn wrap_route_group<'dr>(
             .push(recipient.clone());
     }
 
-    // 3. For each unique path prefix, wrap the common message
     let mut result = Vec::new();
     for (path_prefix, recipients) in path_groups {
         if path_prefix.is_empty() {
-            // No additional wrapping needed for these recipients
-            // They go directly through the common path
+            // These recipients go straight through the common path.
             result.push(WrappedMessage {
                 message: common_wrapped.clone(),
                 service_endpoint: group.service_endpoint.clone(),
@@ -182,7 +172,6 @@ async fn wrap_route_group<'dr>(
                 forward_ids: common_forward_ids.clone(),
             });
         } else {
-            // Wrap the common message with this path's prefix
             let (branch_wrapped, mut forward_ids) = wrap_for_mediator_chain(
                 &common_wrapped,
                 &recipients,
@@ -194,8 +183,7 @@ async fn wrap_route_group<'dr>(
             .await?;
             forward_ids.extend(common_forward_ids.iter().cloned());
 
-            // The endpoint for this branch is determined by the first mediator in the prefix
-            // For now, use the group's endpoint (this could be optimized further)
+            // Uses the group's endpoint, not the branch's first mediator.
             result.push(WrappedMessage {
                 message: branch_wrapped,
                 service_endpoint: group.service_endpoint.clone(),
@@ -228,13 +216,11 @@ async fn wrap_prefix_based_group<'dr>(
 ) -> Result<Vec<WrappedMessage>> {
     use super::{build_forward_message, build_forward_message_multi, NextDestination};
 
-    // Get the first common mediator (where we send the message)
     let first_mediator = group
         .common_suffix
         .first()
         .ok_or_else(|| err_msg(ErrorKind::InvalidState, "Prefix group has no common prefix"))?;
 
-    // Group recipients by their next hop (after the common prefix)
     let mut next_hop_groups: HashMap<String, Vec<String>> = HashMap::new();
     for (recipient, path) in &group.individual_paths {
         if let Some(next_hop) = path.first() {
@@ -245,18 +231,15 @@ async fn wrap_prefix_based_group<'dr>(
         }
     }
 
-    // Check if optimization provides benefit (multiple different next hops)
     let unique_next_hops: Vec<String> = next_hop_groups.keys().cloned().collect();
     let has_optimization_benefit = unique_next_hops.len() > 1;
 
-    // USE ROUTING-MULTI: When flag is true AND optimization provides benefit
+    // routing-multi only pays off when the next hops differ.
     if use_routing_multi && has_optimization_benefit {
-        // For each next hop group, create a wrapped message for the remaining path
         let mut encrypted_attachments = HashMap::new();
         let mut next_destinations = Vec::new();
 
         for (next_hop, recipients_for_hop) in &next_hop_groups {
-            // Get remaining paths for all recipients in this group
             let remaining_paths: Vec<(String, Vec<String>)> = recipients_for_hop
                 .iter()
                 .filter_map(|recipient| {
@@ -271,11 +254,9 @@ async fn wrap_prefix_based_group<'dr>(
                 })
                 .collect();
 
-            // Check if all recipients have the same remaining path
             let all_same = remaining_paths.windows(2).all(|w| w[0].1 == w[1].1);
 
             let wrapped_for_path = if all_same && !remaining_paths.is_empty() {
-                // Simple case: all recipients have same remaining path
                 let remaining_path = &remaining_paths[0].1;
                 wrap_for_mediator_chain(
                     encrypted_msg,
@@ -288,8 +269,6 @@ async fn wrap_prefix_based_group<'dr>(
                 .await?
                 .0
             } else if !remaining_paths.is_empty() {
-                // Complex case: recipients have divergent remaining paths
-                // We need to recursively create a routing structure for the next level
                 wrap_divergent_paths(
                     encrypted_msg,
                     &remaining_paths,
@@ -300,25 +279,16 @@ async fn wrap_prefix_based_group<'dr>(
                 )
                 .await?
             } else {
-                // No remaining path, just use the encrypted message
                 encrypted_msg.to_owned()
             };
 
-            // Build a forward message for this path that will be decrypted by next_hop
-            // Determine where it should go AFTER next_hop decrypts it
             let forward_to = if all_same && !remaining_paths.is_empty() {
-                // Use the first recipient's remaining path
-                let remaining = &remaining_paths[0].1;
-                if remaining.is_empty() {
-                    // No more mediators after next_hop, point to final recipient
-                    &recipients_for_hop[0]
-                } else {
-                    // Point to the next mediator in the chain
-                    &remaining[0]
-                }
+                remaining_paths[0]
+                    .1
+                    .first()
+                    .unwrap_or(&recipients_for_hop[0])
             } else {
-                // Divergent paths - the wrapped message is already a routing structure
-                // Point to next_hop since it will handle the routing
+                // The wrapped message already is a routing structure that next_hop resolves.
                 next_hop
             };
 
@@ -326,7 +296,6 @@ async fn wrap_prefix_based_group<'dr>(
                 build_forward_message(&wrapped_for_path, forward_to, headers)
                     .context("Failed to build inner forward message")?;
 
-            // Encrypt for the next hop
             let encrypted_for_next = anoncrypt(
                 &[next_hop.as_str()],
                 did_resolver,
@@ -337,25 +306,20 @@ async fn wrap_prefix_based_group<'dr>(
             .context(format!("Failed to encrypt for next hop {next_hop}"))?
             .0;
 
-            // Generate attachment ID
             let attachment_id = format!("att-{inner_fwd_id}");
 
-            // Add to attachments map
             encrypted_attachments.insert(attachment_id.clone(), encrypted_for_next);
 
-            // Create NextDestination entry
             next_destinations.push(NextDestination {
                 to: vec![next_hop.clone()],
                 attachment_id,
             });
         }
 
-        // Build the routing-multi forward message with all attachments
         let (fwd_mod_msg, fwd_mod_id) =
             build_forward_message_multi(next_destinations, encrypted_attachments, headers)
                 .context("Failed to build routing-multi forward message")?;
 
-        // Encrypt for the first common mediator
         let encrypted_fwd = anoncrypt(
             &[first_mediator.as_str()],
             did_resolver,
@@ -368,7 +332,6 @@ async fn wrap_prefix_based_group<'dr>(
         ))?
         .0;
 
-        // Return single optimized wrapped message
         return Ok(vec![WrappedMessage {
             message: encrypted_fwd,
             service_endpoint: group.service_endpoint.clone(),
@@ -378,19 +341,16 @@ async fn wrap_prefix_based_group<'dr>(
         }]);
     }
 
-    // FALLBACK TO STANDARD DIDCOMM 2.0: When flag is false OR no optimization benefit
-    // Create separate forward messages for each next hop
+    // Standard DIDComm 2.0: one forward message per next hop.
     let mut result = Vec::new();
 
     for (next_hop, recipients_for_hop) in next_hop_groups {
-        // Get the remaining path after this next hop
         let remaining_path: Vec<String> = group
             .individual_paths
             .get(&recipients_for_hop[0])
             .map(|path| path[1..].to_vec())
             .unwrap_or_default();
 
-        // Wrap the encrypted message for the remaining path
         let (wrapped_for_path, inner_forward_ids) = wrap_for_mediator_chain(
             encrypted_msg,
             &recipients_for_hop,
@@ -401,23 +361,14 @@ async fn wrap_prefix_based_group<'dr>(
         )
         .await?;
 
-        // Determine where the forward message should point to AFTER next_hop decrypts
-        let forward_to = if remaining_path.is_empty() {
-            // No more mediators, point to the final recipient
-            &recipients_for_hop[0]
-        } else {
-            // Point to the next mediator in the remaining path
-            &remaining_path[0]
-        };
+        let forward_to = remaining_path.first().unwrap_or(&recipients_for_hop[0]);
 
-        // Build standard forward message pointing to where it goes after next_hop decrypts
         let (fwd_msg, fwd_id) = build_forward_message(&wrapped_for_path, forward_to, headers)
             .context("Failed to build forward message")?;
         let forward_ids = std::iter::once(fwd_id)
             .chain(inner_forward_ids)
             .collect::<Vec<_>>();
 
-        // Encrypt for the next hop mediator (who will decrypt and forward)
         let encrypted_fwd = anoncrypt(
             &[next_hop.as_str()],
             did_resolver,
@@ -458,7 +409,6 @@ async fn wrap_divergent_paths<'dr>(
 ) -> Result<String> {
     use super::{build_forward_message_multi, NextDestination};
 
-    // Group recipients by their next hop
     let mut next_hop_groups: HashMap<String, Vec<String>> = HashMap::new();
     let mut next_hop_remaining: HashMap<String, Vec<String>> = HashMap::new();
 
@@ -469,7 +419,6 @@ async fn wrap_divergent_paths<'dr>(
                 .or_default()
                 .push(recipient.clone());
 
-            // Store the remaining path after this next hop
             if !next_hop_remaining.contains_key(next_hop) {
                 let remaining = if remaining_path.len() > 1 {
                     remaining_path[1..].to_vec()
@@ -481,7 +430,6 @@ async fn wrap_divergent_paths<'dr>(
         }
     }
 
-    // If we can use routing-multi and have multiple next hops, create a routing-multi message
     if use_routing_multi && next_hop_groups.len() > 1 {
         let mut encrypted_attachments = HashMap::new();
         let mut next_destinations = Vec::new();
@@ -489,7 +437,6 @@ async fn wrap_divergent_paths<'dr>(
         for (next_hop, recipients) in &next_hop_groups {
             let remaining = next_hop_remaining.get(next_hop).unwrap();
 
-            // Recursively wrap for the remaining path
             let wrapped = wrap_for_mediator_chain(
                 encrypted_msg,
                 recipients,
@@ -501,21 +448,11 @@ async fn wrap_divergent_paths<'dr>(
             .await?
             .0;
 
-            // Build forward message pointing to where it should go AFTER next_hop decrypts
-            // If there are more mediators in the remaining path, point to the first one
-            // Otherwise, point to the final recipient
-            let forward_to = if remaining.is_empty() {
-                // No more mediators, point to the final recipient
-                &recipients[0]
-            } else {
-                // Point to the next mediator in the remaining path
-                &remaining[0]
-            };
+            let forward_to = remaining.first().unwrap_or(&recipients[0]);
 
             let (fwd_msg, fwd_id) = build_forward_message(&wrapped, forward_to, headers)
                 .context("Failed to build forward message for divergent path")?;
 
-            // Encrypt for the next hop
             let encrypted = anoncrypt(
                 &[next_hop.as_str()],
                 did_resolver,
@@ -526,26 +463,22 @@ async fn wrap_divergent_paths<'dr>(
             .context(format!("Failed to encrypt for next hop {next_hop}"))?
             .0;
 
-            // Add to attachments
             let attachment_id = format!("att-{fwd_id}");
             encrypted_attachments.insert(attachment_id.clone(), encrypted);
 
-            // Add destination
             next_destinations.push(NextDestination {
                 to: vec![next_hop.clone()],
                 attachment_id,
             });
         }
 
-        // Build routing-multi message with all attachments
         let (routing_multi_msg, _) =
             build_forward_message_multi(next_destinations, encrypted_attachments, headers)
                 .context("Failed to build routing-multi message for divergent paths")?;
 
         Ok(routing_multi_msg)
     } else {
-        // Fallback: just wrap for the first recipient's path
-        // This shouldn't happen often, but provides a safe fallback
+        // With a single next hop (or routing-multi off) only the first recipient's path is wrapped.
         let (recipient, remaining_path) = &remaining_paths[0];
         Ok(wrap_for_mediator_chain(
             encrypted_msg,
@@ -582,15 +515,11 @@ async fn wrap_for_mediator_chain<'dr>(
     let mut next_hop = recipients.first().unwrap().clone(); // The ultimate destination
     let mut forward_ids = Vec::with_capacity(mediators.len());
 
-    // Work backwards through the mediator chain (last to first)
-    // This creates nested forward messages
     for mediator in mediators.iter().rev() {
-        // Build forward message pointing to the next hop
         let (forward_msg, forward_id) = build_forward_message(&current_msg, &next_hop, headers)
             .context("Failed to build forward message")?;
         forward_ids.push(forward_id);
 
-        // Encrypt for this mediator
         current_msg = anoncrypt(
             &[mediator.as_str()],
             did_resolver,
@@ -613,11 +542,8 @@ async fn wrap_for_mediator_chain<'dr>(
 
 #[cfg(test)]
 mod tests {
-    // Note: Full integration tests would require mock DID resolver and secrets
-    // These tests verify the structure and logic
-
     #[test]
-    fn test_route_group_identical_routes() {
+    fn identical_routes_are_detected() {
         use crate::protocols::routing::tree::RouteGroup;
         use std::collections::HashMap;
 
@@ -638,7 +564,7 @@ mod tests {
     }
 
     #[test]
-    fn test_route_group_divergent_routes() {
+    fn divergent_routes_are_not_identical() {
         use crate::protocols::routing::tree::RouteGroup;
         use std::collections::HashMap;
 

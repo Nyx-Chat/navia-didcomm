@@ -6,7 +6,7 @@ use crate::{
 
 impl Message {
     /// Produces `DIDComm Plaintext Messages`
-    /// https://identity.foundation/didcomm-messaging/spec/#didcomm-plaintext-messages.
+    /// <https://identity.foundation/didcomm-messaging/spec/#didcomm-plaintext-messages>.
     ///
     /// A DIDComm message in its plaintext form, not packaged into any protective envelope,
     /// is known as a DIDComm plaintext message. Plaintext messages lack confidentiality and integrity

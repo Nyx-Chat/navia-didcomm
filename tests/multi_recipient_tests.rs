@@ -1,9 +1,11 @@
 //! Integration tests for multi-recipient DIDComm messaging
 
+// Each file uses only part of the shared test vectors.
 #[allow(unused_imports, dead_code)]
 #[path = "../src/test_vectors/mod.rs"]
 mod test_vectors;
 
+// The shared test vectors name the crate `didcomm`.
 pub(crate) use navia_didcomm as didcomm;
 
 use base64::Engine;

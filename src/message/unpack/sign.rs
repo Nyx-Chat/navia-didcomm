@@ -154,7 +154,6 @@ pub(crate) async fn _try_unpack_sign<'dr>(
         Err(err_msg(ErrorKind::Malformed, "Wrong signature"))?;
     }
 
-    // TODO: More precise error conversion
     let payload = BASE64_URL_SAFE_NO_PAD
         .decode(parsed_jws.jws.payload)
         .kind(ErrorKind::Malformed, "Signed payloa is invalid base64")?;

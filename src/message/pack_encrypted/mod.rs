@@ -1,5 +1,6 @@
 mod anoncrypt;
 mod authcrypt;
+mod recipients;
 
 use std::collections::HashMap;
 
@@ -29,7 +30,7 @@ pub(crate) use self::authcrypt::authcrypt as authcrypt_raw;
 
 impl Message {
     /// Produces `DIDComm Encrypted Message`
-    /// https://identity.foundation/didcomm-messaging/spec/#didcomm-encrypted-message.
+    /// <https://identity.foundation/didcomm-messaging/spec/#didcomm-encrypted-message>.
     ///
     /// A DIDComm encrypted message is an encrypted JWM (JSON Web Messages) and
     /// hides its content from all but authorized recipients, discloses (optionally) and proves
@@ -101,7 +102,6 @@ impl Message {
     /// - `Unsupported` Used crypto or method is unsupported.
     /// - `InvalidState` Indicates library error.
     /// - `IOError` IO error during DID or secrets resolving
-    /// TODO: verify and update errors list
     pub async fn pack_encrypted<'dr, 'sr>(
         &self,
         to: &[&str],
@@ -113,13 +113,11 @@ impl Message {
     ) -> Result<Vec<(String, PackEncryptedMetadata)>> {
         self._validate_pack_encrypted(to, from, sign_by)?;
 
-        // Deduplicate recipients (if same DID appears multiple times, use only once)
         let unique_to: Vec<&str> = {
             let mut seen = std::collections::HashSet::new();
             to.iter().filter(|did| seen.insert(*did)).copied().collect()
         };
 
-        // Use caching resolver to avoid duplicate DID resolutions
         let caching_resolver = CachingDIDResolver::new(did_resolver);
 
         // The padded clone is only for the plaintext that is encrypted: the metadata
@@ -129,7 +127,6 @@ impl Message {
             .map(|floor| padding::pad(self, floor))
             .transpose()?;
 
-        // Extract JWE-related steps to a separate method for better modularity
         let (msg, from_kid, to_kids, sign_by_kid) = padded
             .as_ref()
             .unwrap_or(self)
@@ -143,70 +140,20 @@ impl Message {
             )
             .await?;
 
-        // Multi-recipient routing optimization
-        let results = if options.forward {
-            // Analyze routing paths for all recipients
+        let routing_tree = if options.forward {
             let routing_paths = analyze_routing_paths(
                 &unique_to,
                 options.messaging_service.as_deref(),
                 &caching_resolver,
             )
             .await?;
-
-            // Group by common routes for optimization
-            let routing_tree = group_by_common_routes(routing_paths);
-
-            // Check if forwarding is needed
-            if routing_tree.needs_forwarding() {
-                // Wrap messages using the optimized routing tree
-                let wrapped_messages = wrap_with_routing_tree(
-                    &msg,
-                    &routing_tree,
-                    options.forward_headers.as_ref(),
-                    &options.enc_alg_anon,
-                    &caching_resolver,
-                    options.use_routing_multi,
-                )
-                .await?;
-
-                // Return all wrapped messages with their metadata
-                wrapped_messages
-                    .into_iter()
-                    .map(|wrapped| {
-                        // Outermost forward first, the message itself last, as `unpack`
-                        // lists them.
-                        let mut message_ids = wrapped.forward_ids;
-                        message_ids.push(self.id.clone());
-
-                        let metadata = PackEncryptedMetadata {
-                            messaging_service: Some(MessagingServiceMetadata {
-                                id: wrapped.service_id,
-                                service_endpoint: wrapped.service_endpoint,
-                            }),
-                            from_kid: from_kid.clone(),
-                            sign_by_kid: sign_by_kid.clone(),
-                            to_kids: to_kids.clone(),
-                            message_ids,
-                        };
-                        (wrapped.message, metadata)
-                    })
-                    .collect()
-            } else {
-                // No forwarding needed - direct delivery
-                vec![(
-                    msg,
-                    PackEncryptedMetadata {
-                        messaging_service: None,
-                        from_kid,
-                        sign_by_kid,
-                        to_kids,
-                        message_ids: vec![self.id.clone()],
-                    },
-                )]
-            }
+            Some(group_by_common_routes(routing_paths)).filter(|tree| tree.needs_forwarding())
         } else {
-            // Forwarding disabled in options
-            vec![(
+            None
+        };
+
+        let Some(routing_tree) = routing_tree else {
+            return Ok(vec![(
                 msg,
                 PackEncryptedMetadata {
                     messaging_service: None,
@@ -215,10 +162,39 @@ impl Message {
                     to_kids,
                     message_ids: vec![self.id.clone()],
                 },
-            )]
+            )]);
         };
 
-        Ok(results)
+        let wrapped_messages = wrap_with_routing_tree(
+            &msg,
+            &routing_tree,
+            options.forward_headers.as_ref(),
+            &options.enc_alg_anon,
+            &caching_resolver,
+            options.use_routing_multi,
+        )
+        .await?;
+
+        Ok(wrapped_messages
+            .into_iter()
+            .map(|wrapped| {
+                // Outermost forward first, the message itself last, as `unpack` lists them.
+                let mut message_ids = wrapped.forward_ids;
+                message_ids.push(self.id.clone());
+
+                let metadata = PackEncryptedMetadata {
+                    messaging_service: Some(MessagingServiceMetadata {
+                        id: wrapped.service_id,
+                        service_endpoint: wrapped.service_endpoint,
+                    }),
+                    from_kid: from_kid.clone(),
+                    sign_by_kid: sign_by_kid.clone(),
+                    to_kids: to_kids.clone(),
+                    message_ids,
+                };
+                (wrapped.message, metadata)
+            })
+            .collect())
     }
 
     fn _validate_pack_encrypted(
@@ -229,7 +205,6 @@ impl Message {
     ) -> Result<()> {
         padding::ensure_unpadded(self)?;
 
-        // Validate that we have at least one recipient
         if to.is_empty() {
             Err(err_msg(
                 ErrorKind::IllegalArgument,
@@ -237,7 +212,6 @@ impl Message {
             ))?;
         }
 
-        // Validate all recipient DIDs
         for recipient in to {
             if !is_did(recipient) {
                 Err(err_msg(
@@ -248,7 +222,6 @@ impl Message {
 
             let (to_did, _) = did_or_url(recipient);
 
-            // Check that message.to contains this recipient
             match self.to {
                 Some(ref sto) if !sto.contains(&to_did.into()) => {
                     Err(err_msg(
@@ -260,7 +233,6 @@ impl Message {
             }
         }
 
-        // Validate from
         match from {
             Some(from) if !is_did(from) => Err(err_msg(
                 ErrorKind::IllegalArgument,
@@ -269,7 +241,6 @@ impl Message {
             _ => {}
         }
 
-        // Validate sign_by
         match sign_by {
             Some(sign_by) if !is_did(sign_by) => Err(err_msg(
                 ErrorKind::IllegalArgument,
@@ -287,8 +258,7 @@ impl Message {
             ))?;
         }
 
-        // Validate from matches message.from; a frame whose `from` is missing is refused
-        // by its recipient.
+        // A frame whose `from` is missing is refused by its recipient.
         match (from, &self.from) {
             (Some(from), Some(ref sfrom)) if did_or_url(from).0 != sfrom => Err(err_msg(
                 ErrorKind::IllegalArgument,
@@ -304,8 +274,7 @@ impl Message {
         Ok(())
     }
 
-    /// Internal method that handles JWE envelope creation (signing + encryption)
-    /// This method is separated from pack_encrypted to allow reuse in routing protocols
+    /// Signs when `sign_by` is set, then encrypts: authcrypt when `from` is set, anoncrypt otherwise.
     async fn _pack_jwe_envelope<'dr, 'sr>(
         &self,
         to: &[&str],
@@ -315,7 +284,6 @@ impl Message {
         secrets_resolver: &'sr (dyn SecretsResolver + 'sr),
         options: &PackEncryptedOptions,
     ) -> Result<(String, Option<String>, Vec<String>, Option<String>)> {
-        // Step 1: Create signed message if sign_by is provided, otherwise use plaintext
         let (msg, sign_by_kid) = if let Some(sign_by) = sign_by {
             let (msg, PackSignedMetadata { sign_by_kid }) = self
                 .pack_signed(sign_by, did_resolver, secrets_resolver)
@@ -330,7 +298,6 @@ impl Message {
             (msg, None)
         };
 
-        // Step 2: Apply encryption (authcrypt if from is provided, anoncrypt otherwise)
         let (msg, from_kid, to_kids) = if let Some(from) = from {
             let (msg, from_kid, to_kids) = authcrypt(
                 to,
@@ -377,7 +344,7 @@ pub struct PackEncryptedOptions {
     #[serde(default = "crate::utils::serde::_true")]
     pub use_routing_multi: bool,
 
-    /// Identifier (DID URL) of messaging service (https://identity.foundation/didcomm-messaging/spec/#did-document-service-endpoint).
+    /// Identifier (DID URL) of messaging service (<https://identity.foundation/didcomm-messaging/spec/#did-document-service-endpoint>).
     /// If DID doc contains multiple messaging services it allows specify what service to use.
     /// If not present first service will be used.
     pub messaging_service: Option<String>,

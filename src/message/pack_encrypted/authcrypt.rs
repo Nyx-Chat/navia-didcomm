@@ -8,6 +8,7 @@ use askar_crypto::{
     kdf::{ecdh_1pu::Ecdh1PU, ecdh_es::EcdhEs},
 };
 
+use super::recipients::{ensure_every_recipient_has_key, recipient_key_agreements};
 use crate::{
     algorithms::{AnonCryptAlg, AuthCryptAlg},
     did::DIDResolver,
@@ -39,8 +40,6 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
         .context("Unable resolve sender did")?
         .ok_or_else(|| err_msg(ErrorKind::DIDNotResolved, "Sender did not found"))?;
 
-    // Initial list of sender keys is all key_agreements of sender did doc
-    // or filtered to keep only provided key
     let from_kids: Vec<_> = from_ddoc
         .key_agreement
         .iter()
@@ -55,7 +54,6 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
         ))?;
     }
 
-    // Keep only sender keys present in the wallet
     let from_kids = secrets_resolver
         .find_secrets(&from_kids)
         .await
@@ -68,7 +66,6 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
         ))?;
     }
 
-    // Resolve materials for sender keys
     let from_keys = from_kids
         .into_iter()
         .map(|kid| {
@@ -85,68 +82,9 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
         })
         .collect::<Result<Vec<_>>>()?;
 
-    // Collect keys from ALL recipient DIDs
-    let mut all_to_keys = Vec::new();
+    let to_keys = recipient_key_agreements(to, did_resolver).await?;
 
-    for recipient in to {
-        let (to_did, to_kid) = did_or_url(recipient);
-
-        // Note: DID resolution caching is now handled by CachingDIDResolver in pack_encrypted
-        let to_ddoc = did_resolver
-            .resolve(to_did)
-            .await
-            .context("Unable resolve recipient did")?
-            .ok_or_else(|| err_msg(ErrorKind::DIDNotResolved, "Recipient did not found"))?;
-
-        // Get key agreements for this recipient
-        let to_kids: Vec<_> = to_ddoc
-            .key_agreement
-            .iter()
-            .filter(|kid| to_kid.map_or(true, |to_kid| kid == &to_kid))
-            .map(std::string::String::as_str)
-            .collect();
-
-        if to_kids.is_empty() {
-            Err(err_msg(
-                ErrorKind::DIDUrlNotFound,
-                format!("No key agreements found for recipient {to_did}"),
-            ))?;
-        }
-
-        // Resolve materials for this recipient's keys
-        let recipient_keys = to_kids
-            .into_iter()
-            .map(|kid| {
-                to_ddoc
-                    .verification_method
-                    .iter()
-                    .find(|vm| secure_string_eq(&vm.id, kid))
-                    .cloned() // Clone to avoid lifetime issues
-                    .ok_or_else(|| {
-                        err_msg(
-                            ErrorKind::Malformed,
-                            format!(
-                                "No verification material found for recipient key agreement {kid}"
-                            ),
-                        )
-                    })
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        all_to_keys.extend(recipient_keys);
-    }
-
-    if all_to_keys.is_empty() {
-        Err(err_msg(
-            ErrorKind::DIDUrlNotFound,
-            "No recipient key agreements found across all recipients",
-        ))?;
-    }
-
-    let to_keys = all_to_keys;
-
-    // Looking for first sender key that has supported crypto and intersects with recipient keys
-    // by key alg
+    // The first sender key whose alg a recipient key shares.
     let from_key = from_keys
         .iter()
         .filter(|key| key.key_alg() != KnownKeyAlg::Unsupported)
@@ -163,7 +101,6 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
             )
         })?;
 
-    // Resolve secret for found sender key
     let from_priv_key = secrets_resolver
         .get_secret(&from_key.id)
         .await
@@ -172,7 +109,6 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
 
     let key_alg = from_key.key_alg();
 
-    // Keep only recipient keys compatible with sender key
     let to_keys: Vec<_> = to_keys
         .into_iter()
         .filter(|key| key.key_alg() == key_alg)
@@ -185,24 +121,11 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
         ))?;
     }
 
-    // Validate that ALL original recipients have at least one compatible key
-    // This ensures we're not silently excluding recipients due to incompatibility
-    for recipient in to {
-        let (to_did, _) = did_or_url(recipient);
-        let has_compatible_key = to_keys.iter().any(|key| {
-            // Check if key.id belongs to this DID (either "did#key" or exact match)
-            key.id == to_did || key.id.starts_with(&format!("{to_did}#"))
-        });
-
-        if !has_compatible_key {
-            Err(err_msg(
-                ErrorKind::NoCompatibleCrypto,
-                format!(
-                    "Recipient {to_did} has no keys compatible with sender's key type ({key_alg:?}). All recipients must have compatible key types for multi-recipient encryption."
-                ),
-            ))?;
-        }
-    }
+    ensure_every_recipient_has_key(
+        to,
+        &to_keys,
+        &format!("compatible with sender's key type ({key_alg:?})"),
+    )?;
 
     let msg = match key_alg {
         KnownKeyAlg::X25519 => {
@@ -357,6 +280,6 @@ pub(crate) async fn authcrypt<'dr, 'sr>(
         ))?,
     };
 
-    let to_kids: Vec<_> = to_keys.into_iter().map(|vm| vm.id.clone()).collect();
+    let to_kids: Vec<_> = to_keys.into_iter().map(|vm| vm.id).collect();
     Ok((msg, from_key.id.clone(), to_kids))
 }
